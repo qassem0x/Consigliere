@@ -1,0 +1,31 @@
+Transaction_ID,Category,Product_Name,Unit_Price,Quantity,Customer_City
+1001,Electronics,Wireless Earbuds,49.99,2,Cairo
+1002,Home,Smart Coffee Maker,120.50,1,Alexandria
+1003,Electronics,Gaming Mouse,35.00,5,Giza
+1004,Fashion,Running Shoes,85.00,1,Cairo
+1005,Electronics,4K Monitor,299.99,2,Mansoura
+1006,Home,Robot Vacuum,250.00,1,Cairo
+1007,Fashion,Hoodie,45.00,3,Alexandria
+1008,Electronics,Mechanical Keyboard,110.00,1,Giza
+1009,Electronics,USB-C Cable,12.99,10,Tanta
+1010,Home,Air Fryer,89.99,1,Cairo
+1011,Fashion,Sneakers,120.00,2,Hurghada
+1012,Electronics,Smartphone,699.00,1,Cairo
+1013,Home,Blender,55.50,1,Aswan
+1014,Electronics,Laptop Stand,25.00,4,Giza
+1015,Fashion,Denim Jacket,65.00,1,Alexandria
+1016,Electronics,Webcam,59.99,2,Cairo
+1017,Home,Smart Bulb,15.00,6,Mansoura
+1018,Fashion,Backpack,50.00,1,Cairo
+1019,Electronics,Power Bank,30.00,3,Suez
+1020,Home,Electric Kettle,40.00,1,Giza
+1021,Fashion,Sunglasses,150.00,1,Sharm El-Sheikh
+1022,Electronics,Bluetooth Speaker,45.00,2,Cairo
+1023,Home,Desk Lamp,22.50,2,Alexandria
+1024,Electronics,External SSD,110.00,1,Cairo
+1025,Fashion,Wristwatch,200.00,1,Giza
+1026,Electronics,Graphics Card,450.00,1,Cairo
+1027,Home,Throw Pillow,18.00,4,Tanta
+1028,Fashion,Beanie,12.00,5,Alexandria
+1029,Electronics,VR Headset,350.00,1,Cairo
+1030,Home,Wall Clock,25.00,1,Luxor
