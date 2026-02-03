@@ -1,0 +1,31 @@
+services:
+  # backend:
+  #   build: .
+  #   container_name: consigliere_api
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./app:/code/app        
+  #     - ./data:/code/data      
+  #     - ./static:/code/static
+  #   environment:
+  #     - DATABASE_URL=postgresql://user:password@db:5432/consigliere
+  #   depends_on:
+  #     - db
+
+  db:
+    image: postgres:15-alpine
+    container_name: consigliere_db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=consigliere
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./app/database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: always
+
+volumes:
+  postgres_data:

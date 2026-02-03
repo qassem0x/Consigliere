@@ -1,14 +1,34 @@
-from fastapi import APIRouter, UploadFile, File
+from importlib.metadata import metadata
+from fastapi import APIRouter, UploadFile, File, Depends
 import shutil
+from app.core.deps import get_current_user
 from app.services.ingestion import process_file
+from app.models.db_models import User, File as DBFile
+from sqlalchemy.orm import Session
+from app.core.database import get_db
 
 router = APIRouter()
 
 @router.post("/upload")
-def upload_file(file: UploadFile = File(...)):
+def upload_file(file: UploadFile = File(...), 
+                db: Session = Depends(get_db),
+                user: User = Depends(get_current_user)):
     path = f"data/{file.filename}"
     with open(path, "wb+") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     metadata = process_file(file_path=path)
-    return {"message": "File Uploaded Successfully", "data": metadata}
+
+    new_file = DBFile(
+        filename=file.filename,
+        user_id=user.id,
+        file_path=metadata['filename'],
+        row_count=metadata['rows'],
+        columns=metadata['columns']
+    )
+
+    db.add(new_file)
+    db.commit()
+    db.refresh(new_file) # To get the new file's ID and other info
+
+    return {"status": "success", "file_id": str(new_file.id), "metadata": metadata}
