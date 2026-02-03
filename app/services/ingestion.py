@@ -15,14 +15,14 @@ def process_file(file_path: str):
 
     df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_").str.replace(r"[^\w]", "", regex=True)
 
-    # Convert to PARQUET for 
+    # Convert to PARQUET for higher speed 
     file_id = str(uuid.uuid4())
     parquet_filename = f"{file_id}.parquet"
     parquet_path = f"data/{parquet_filename}"
 
     df.to_parquet(parquet_path)
 
-    # os.remove(file_path)
+    os.remove(file_path)
 
     return {
         "file_id":file_id,

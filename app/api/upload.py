@@ -11,4 +11,4 @@ def upload_file(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
 
     metadata = process_file(file_path=path)
-    return {"message": "File Uploaded Sucessfully", "data": metadata}
+    return {"message": "File Uploaded Successfully", "data": metadata}
