@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api import upload, auth, chats
+from app.api import upload, auth, chats, messages
 from sqlalchemy import create_engine, text
 import os
 
@@ -10,6 +10,7 @@ app = FastAPI()
 app.include_router(upload.router)
 app.include_router(auth.router)
 app.include_router(chats.router)
+app.include_router(messages.router)
     
 @app.get("/")
 def check_health():

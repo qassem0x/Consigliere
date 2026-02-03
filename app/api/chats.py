@@ -20,7 +20,10 @@ def create_chat(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
     
+    # NOTE: Title left as None, for default naming i'll do it in the frontend side
+    
     new_chat = Chat(file_id=chat.file_id, user_id=user.id)
+
     try:
         db.add(new_chat)
         db.commit()
