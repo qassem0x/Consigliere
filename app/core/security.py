@@ -9,7 +9,7 @@ dotenv.load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY", "4d8s4dm1239jsdkzxnquqlxpc")
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 2000
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
