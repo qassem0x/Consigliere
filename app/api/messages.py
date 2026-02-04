@@ -6,6 +6,7 @@ from app.core.deps import get_current_user
 from app.models.db_models import User, Chat, Message
 from app.models.messages import MessageCreate, MessageOut
 from app.services.agent import DataAgent
+import json
 
 router = APIRouter()
 
@@ -50,8 +51,9 @@ def send_message(
     assistant_msg = Message(
         chat_id=chat_id,
         role="assistant",
-        content=answer
+        content=json.dumps(answer)
     )
+
     db.add(assistant_msg)
     db.commit()
     db.refresh(assistant_msg)

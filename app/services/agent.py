@@ -52,20 +52,51 @@ class DataAgent:
         return clean_code
 
     def _execute_code(self, clean_code: str):
+        # TODO: Hanlde Case when Result is a Plot (Future proofing, for now text)
+        
         local_scope = {'df': self.df, 'pd': pd, 'result': None}
-
         stdout_capture = io.StringIO()
 
         try:
             with contextlib.redirect_stdout(stdout_capture):
                 exec(clean_code, {}, local_scope)
+            
             result = local_scope.get('result')
-            if result is not None:
-                return result
+            
+            if isinstance(result, pd.DataFrame):
+                return {
+                    "type": "table",
+                    "data": result.head(50).fillna("").to_dict(orient="records"), # fillna handles NaN for JSON
+                    "columns": list(result.columns) # Frontend needs column names
+                }
+
+            elif isinstance(result, pd.Series):
+                df_temp = result.reset_index() 
+                df_temp.columns = ["Category", "Value"]
+                return {
+                    "type": "table",
+                    "data": df_temp.head(50).fillna("").to_dict(orient="records"),
+                    "columns": ["Category", "Value"]
+                }
+
+            elif result is not None:
+                return {
+                    "type": "text",
+                    "data": str(result)
+                }
+
             else:
-                return stdout_capture.getvalue().strip() or "No result produced."
+                output = stdout_capture.getvalue().strip()
+                return {
+                    "type": "text",
+                    "data": output if output else "Analysis ran, but produced no output."
+                }
+
         except Exception as e:
-            return f"Execution Error: {str(e)}"
+            return {
+                "type": "error",
+                "data": f"Execution Error: {str(e)}"
+            }
 
     def _format_response(self, user_query: str, raw_result: any) -> str:
         fmt_prompt = (
@@ -73,6 +104,7 @@ class DataAgent:
             f"The user asked: '{user_query}'. "
             f"The analysis found: {raw_result}. "
             "Write a very short, natural response answering the user and make it clean and no technical details."
+            "write the response in the style of consigliere, but keep it professional and concise."
         )
         try:
             response = self.model.generate_content(
@@ -83,10 +115,16 @@ class DataAgent:
         except:
             return f"The result is: {raw_result}"
 
-    def answer(self, user_query: str) -> str:
+    def answer(self, user_query: str) -> dict:
         raw_code = self._generate_python_code(user_query)
-        print("Generated Code:", raw_code)
         clean_code = self._sanitize_code(raw_code)
         execution_result = self._execute_code(clean_code)
+        if execution_result["type"] == "table":
+            summary = f"Returned a table with {len(execution_result['data'])} rows and columns: {', '.join(execution_result['columns'])}."
+        else:
+            summary = self._format_response(user_query, execution_result["data"])
         
-        return self._format_response(user_query, execution_result)
+        return {
+            "text": summary,
+            "result": execution_result
+        }
