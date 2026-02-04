@@ -7,6 +7,7 @@ from app.models.db_models import User, Chat, Message
 from app.models.messages import MessageCreate, MessageOut
 from app.services.agent import DataAgent
 import json
+import os
 
 router = APIRouter()
 
@@ -33,20 +34,39 @@ def send_message(
     chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == current_user.id).first()
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    
+    chat_history = db.query(Message).filter(Message.chat_id == chat_id).order_by(Message.created_at.desc()).limit(6).all()
+    
+    history_str = ""
+    for msg in reversed(chat_history):
+        content = msg.content
+        if str(msg.role) == "assistant":
+            try:
+                content_dict = json.loads(str(msg.content))
+                content = content_dict.get("text", msg.content)
+            except:
+                pass
+        content = content[:300] + ("..." if len(content) > 300 else "")
+        history_str += f"{msg.role.capitalize()}: {content}\n"
+
 
     user_msg = Message(
         chat_id=chat_id,
         role="user",
         content=msg_data.content
     )
+        
     db.add(user_msg)
     db.commit()
     db.refresh(user_msg)
 
     path = "data/" + chat.file.file_path
+    if os.path.exists(path) is False:
+        raise HTTPException(status_code=404, detail="Data file not found on server.")
+
     agent = DataAgent(path)
     
-    answer = agent.answer(msg_data.content)
+    answer = agent.answer(msg_data.content, history_str)
     
     assistant_msg = Message(
         chat_id=chat_id,
@@ -57,4 +77,5 @@ def send_message(
     db.add(assistant_msg)
     db.commit()
     db.refresh(assistant_msg)
+    
     return assistant_msg

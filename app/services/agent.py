@@ -19,14 +19,19 @@ class DataAgent:
         self.schema = "\n".join([f"- {col}: {dtype}" for col, dtype in self.df.dtypes.items()])
         self.model = genai.GenerativeModel(MODEL_NAME)
 
-    def _generate_python_code(self, user_query: str) -> str:
+    def _generate_python_code(self, user_query: str, history_str: str="") -> str:
         sys_prompt = (
             "You are a python coding assistant specialized in pandas.\n"
             "Generate a direct python code snippet.No data manipulation (don't change in data). No functions. No markdown. No explanations. No imports or system level operations.\n"
             "The dataframe is 'df'. Assign the final answer to the variable 'result'.\n"
             f"Schema:\n{self.schema}\n"
+            f"History:\n{history_str}\n"
             f"User Query: {user_query}"
         )
+
+        # DEBUG
+        print("DEBUG: System Prompt for Code Generation:")
+        print(sys_prompt)
 
         try:
             # Native Google call
@@ -37,6 +42,7 @@ class DataAgent:
             content = response.text
             return content.strip() if content else ""
         except Exception as e:
+            # DEBUG
             print(f"DEBUG: API Call Failed: {e}")
             return f"result = 'API Error: {str(e)}'"
         
@@ -115,8 +121,8 @@ class DataAgent:
         except:
             return f"The result is: {raw_result}"
 
-    def answer(self, user_query: str) -> dict:
-        raw_code = self._generate_python_code(user_query)
+    def answer(self, user_query: str, history_str: str="") -> dict:
+        raw_code = self._generate_python_code(user_query, history_str)
         clean_code = self._sanitize_code(raw_code)
         execution_result = self._execute_code(clean_code)
         if execution_result["type"] == "table":
