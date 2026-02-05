@@ -10,7 +10,7 @@ from app.models.auth import UserCreate, Token, UserResponse
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
-@router.post("/register", response_model=Token)
+@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
