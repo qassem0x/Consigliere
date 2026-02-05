@@ -6,6 +6,7 @@ from app.services.ingestion import process_file
 from app.models.db_models import User, File as DBFile
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.services.agent import DataAgent
 
 router = APIRouter()
 
@@ -31,4 +32,18 @@ def upload_file(file: UploadFile = File(...),
     db.commit()
     db.refresh(new_file) # To get the new file's ID and other info
 
-    return {"status": "success", "file_id": str(new_file.id), "metadata": metadata}
+    dossier = None
+    try:
+        agent = DataAgent(file_path=f"data/{metadata['filename']}")
+        dossier = agent.generate_dossier()
+        print("Generated dossier:", dossier)
+    except Exception as e:
+        print(f"Error generating dossier: {e}")
+        dossier = {
+            "file_type": "Unprocessed Data",
+            "briefing": "File uploaded successfully. AI analysis is pending.",
+            "key_entities": [],
+            "recommended_actions": []
+        }
+
+    return {"status": "success", "file_id": str(new_file.id), "metadata": metadata, "dossier": dossier}

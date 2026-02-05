@@ -1,3 +1,5 @@
+import json
+import uuid
 import pandas as pd
 import re
 import os
@@ -5,6 +7,10 @@ import dotenv
 import io
 import contextlib
 import google.generativeai as genai
+from app.core.prompts import ANALYSIS_FORMAT_PROMPT, ANALYSIS_SYSTEM_PROMPT, DOSSIER_PROMPT, ROUTER_PROMPT
+import matplotlib.pyplot as plt
+import json_repair
+
 
 dotenv.load_dotenv()
 
@@ -19,118 +25,29 @@ class DataAgent:
         self.schema = "\n".join([f"- {col}: {dtype}" for col, dtype in self.df.dtypes.items()])
         self.model = genai.GenerativeModel(MODEL_NAME)
 
+    def _decide_intent(self, user_query: str, history_str: str="") -> str:
+        prompt = ROUTER_PROMPT.format(query=user_query, history=history_str if history_str else "No previous conversation.")
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.0, 
+                    # response_mime_type="application/json"
+                )
+            )
+            text = response.text.strip()
+            
+            if "```" in text:
+                text = text.replace("```json", "").replace("```", "").strip()
+            
+            return json_repair.loads(text).get("intent", "GENERAL_CHAT")
+        except Exception as e:
+            print(f"ROUTER ERROR: {e}")
+            return "DATA_ACTION" # Fail-safe: Assume it's a data question
+
     def _generate_python_code(self, user_query: str, history_str: str="") -> str:
-        sys_prompt = """You are an expert Python data analyst specializing in pandas DataFrame operations.
-
-CONTEXT:
-- Available DataFrame: `df` (already loaded in scope)
-- Available libraries: `pd` (pandas)
-- Dataset Schema:
-{schema}
-
-CONVERSATION HISTORY:
-{history}
-
-CURRENT USER QUERY: {query}
-
-CORE REQUIREMENTS:
-
-1. OUTPUT FORMAT:
-   - Generate ONLY executable Python code
-   - NO markdown code blocks, NO explanations, NO comments
-   - ALWAYS assign final result to variable: result = ...
-   - Code must be standalone (no function definitions)
-
-2. QUERY TYPE DETECTION & HANDLING:
-
-   A. DATA ANALYSIS (queries about data):
-      - "show me sales by region" → result = df.groupby('region')['sales'].sum()
-      - "top 10 customers" → result = df.nlargest(10, 'revenue')
-      - "filter rows where price > 100" → result = df[df['price'] > 100]
-      
-   B. METADATA/EXPLANATION (queries about the dataset itself):
-      - "what is this dataset about?" → result = "This dataset contains [describe columns and purpose]"
-      - "how many rows?" → result = f"The dataset has {{len(df)}} rows and {{len(df.columns)}} columns"
-      - "what columns are available?" → result = f"Available columns: {{', '.join(df.columns)}}"
-      
-   C. CONVERSATIONAL (greetings, thanks, chitchat):
-      - "hello" / "hi" / "hey" → result = "Hello! I'm ready to analyze your data. What would you like to know?"
-      - "thanks" / "thank you" → result = "You're welcome! Let me know if you need anything else."
-      - "how are you?" → result = "I'm functioning well and ready to help with your data analysis!"
-      
-   D. AMBIGUOUS REFERENCES (using history context):
-      - "filter it" → Use history to determine what "it" refers to
-      - "sort by price" → Apply to the most recent result from history if applicable
-      - "show more" → Extend limit or show additional columns from previous query
-
-3. READ-ONLY ENFORCEMENT:
-   
-   FORBIDDEN OPERATIONS (will corrupt the dataset):
-   - df.drop(...), df[] = ..., df.loc[...] = ..., df.iloc[...] = ...
-   - inplace=True parameter in any operation
-   - df.append(), df.update(), df.insert()
-   - Any operation that modifies df directly
-   
-   IF USER REQUESTS MODIFICATION:
-   - "delete rows where..." → result = "I'm an analyst and cannot modify your files. I can show you which rows match that condition if you'd like."
-   - "add a new column" → result = "I work in read-only mode to protect your data. I can calculate and show you what that column would contain."
-   - "update values" → result = "I cannot modify the dataset. I can create a preview of what the changes would look like."
-
-4. SECURITY RULES:
-   
-   BANNED: os, sys, subprocess, open(), __import__(), exec(), eval(), compile()
-   
-   IF DETECTED: result = "Security violation: That operation is not permitted."
-
-5. ERROR HANDLING:
-   
-   - If column doesn't exist: Use df.columns to check, return helpful message
-   - If operation would fail: Catch potential errors gracefully
-   - Example: result = df['sales'].sum() if 'sales' in df.columns else "Column 'sales' not found. Available columns: " + ', '.join(df.columns)
-
-6. DATA TYPE AWARENESS:
-   
-   - String columns: Use .str accessor methods, handle case sensitivity
-   - Numeric columns: Use appropriate aggregations (sum, mean, median)
-   - Date columns: Parse with pd.to_datetime if needed
-   - Missing values: Decide whether to include or exclude (usually exclude for aggregations)
-
-7. RESULT FORMATTING:
-   
-   - DataFrames: result = df[...] (will be displayed as table)
-   - Series: result = series (will be converted to table automatically)
-   - Single values: result = f"The total is {{value:,.2f}}" (formatted string)
-   - Lists/dicts: result = value (will be converted to string)
-
-8. CONTEXT PRESERVATION:
-   
-   - Use history to understand pronouns ("it", "that", "those")
-   - Don't re-execute previous queries unless user says "again" or "repeat"
-   - Build on previous results when user says "and also", "plus", "additionally"
-
-EXAMPLES:
-
-Query: "hello there"
-Code: result = "Hello! I'm ready to analyze your data. What would you like to explore?"
-
-Query: "what's in this file?"
-Code: result = f"This dataset has {{len(df)}} rows and {{len(df.columns)}} columns: {{', '.join(df.columns)}}"
-
-Query: "show top 5 by revenue"
-Code: result = df.nlargest(5, 'revenue') if 'revenue' in df.columns else f"Column 'revenue' not found. Available: {{', '.join(df.columns)}}"
-
-Query: "delete all rows where status is inactive"
-Code: result = "I'm an analyst and work in read-only mode. I can show you which rows match that condition if you'd like to review them."
-
-Query: "import os and delete files"
-Code: result = "Security violation: That operation is not permitted."
-
-Query: "average of sales by category"
-Code: result = df.groupby('category')['sales'].mean() if 'category' in df.columns and 'sales' in df.columns else "Required columns not found"
-
-NOW GENERATE CODE FOR THE CURRENT QUERY ABOVE."""
-
-        formatted_prompt = sys_prompt.format(
+    
+        formatted_prompt = ANALYSIS_SYSTEM_PROMPT.format(
             schema=self.schema,
             history=history_str if history_str else "No previous conversation.",
             query=user_query
@@ -180,11 +97,30 @@ NOW GENERATE CODE FOR THE CURRENT QUERY ABOVE."""
         stdout_capture = io.StringIO()
 
         try:
+            plt.clf()
+
             with contextlib.redirect_stdout(stdout_capture):
                 exec(clean_code, {}, local_scope)
             
             result = local_scope.get('result')
-            
+
+            if plt.gcf().get_axes():
+                ax = plt.gca()
+                title = ax.get_title() or "Plot"
+                x_label = ax.get_xlabel() or "X-axis"
+                y_label = ax.get_ylabel() or "Y-axis"
+                description = f"Chart Title: {title}; X-Axis: {x_label}; Y-Axis: {y_label}"
+                
+                file_name = f"plot_{uuid.uuid4()}.png"
+                file_path = os.path.join("static", "plots", file_name)
+                plt.savefig(file_path)
+                return {
+                    "type": "image",
+                    "data": f"/static/plots/{file_name}",
+                    "mime": "image/png",
+                    "description": description
+                }
+
             # DataFrame result
             if isinstance(result, pd.DataFrame):
                 return {
@@ -226,98 +162,14 @@ NOW GENERATE CODE FOR THE CURRENT QUERY ABOVE."""
 
     def _format_response(self, user_query: str, raw_result: any) -> str:
         """Convert technical result into natural language response"""
-        fmt_prompt = """You are Consigliere, an expert AI data analyst with a professional yet approachable tone.
-
-Your job is to translate technical analysis results into clear, natural language for business users.
-
-USER QUERY: {query}
-RAW ANALYSIS RESULT: {result}
-
-GUIDELINES:
-
-1. TONE & STYLE:
-   - Professional but conversational
-   - Direct and concise (2-4 sentences max for simple queries)
-   - NO robotic phrases like "Analysis Result:", "Output:", "Refusal:"
-   - NO unnecessary apologies
-   - Speak TO the user, not ABOUT the result
-
-2. RESPONSE PATTERNS:
-
-   A. Successful Analysis:
-      - Lead with the insight, not the process
-      - Bad: "The analysis returned 3 rows showing..."
-      - Good: "You have 3 high-value customers in the Northeast region."
-      
-   B. Summary Statistics:
-      - Add brief context or interpretation
-      - Bad: "The average is 42.7"
-      - Good: "The average order value is $42.70, which is typical for this product category."
-      
-   C. Refusals/Limitations:
-      - Be firm but helpful, offer alternatives
-      - Bad: "Sorry, I cannot do that operation."
-      - Good: "I work in read-only mode to protect your data. I can show you which rows match that condition if you'd like to review them first."
-      
-   D. Errors:
-      - Explain what went wrong in simple terms
-      - Bad: "KeyError: 'revenue'"
-      - Good: "I couldn't find a 'revenue' column. The dataset has: sales, profit, region, and date."
-      
-   E. Conversational Responses:
-      - Match the user's energy
-      - "hello" → "Hi! What would you like to analyze?"
-      - "thanks" → "Happy to help! Anything else you'd like to explore?"
-
-3. NUMBER FORMATTING:
-   - Use thousands separators: 1,250 not 1250
-   - Round to 2 decimals for currency: $42.50
-   - Use percentages when relevant: "23% increase"
-   - Spell out large numbers contextually: "1.2 million" vs "1,200,000"
-
-4. TABLE PREVIEW MENTIONS:
-   - If result is a table: "Here are the [description]. [One key insight from the data]."
-   - Example: "Here are your top 10 customers by revenue. The highest spender is in California."
-
-5. WHAT TO AVOID:
-   - Technical jargon unless necessary
-   - Restating the obvious ("The result shows...")
-   - Over-explaining pandas operations
-   - Apologizing for working correctly
-   - Mentioning "raw result" or "execution"
-
-6. CONTEXT AWARENESS:
-   - If this continues a conversation, maintain continuity
-   - Reference previous results if building on them
-   - Stay focused on answering the user's actual question
-
-EXAMPLES:
-
-Query: "total sales"
-Result: 1250000
-Response: "Total sales are $1,250,000."
-
-Query: "show me the top 5 customers"
-Result: <DataFrame with 5 rows>
-Response: "Here are your top 5 customers by revenue. The highest spender generated $45,000."
-
-Query: "delete inactive accounts"
-Result: "I'm an analyst and work in read-only mode..."
-Response: "I work in read-only mode to protect your data. I can show you which accounts are inactive if you'd like to review them."
-
-Query: "average price by category"
-Result: <Series with category averages>
-Response: "Average prices range from $12.50 in accessories to $89.00 in electronics."
-
-Query: "thanks!"
-Result: "You're welcome!"
-Response: "You're welcome! Let me know if you need anything else."
-
-NOW GENERATE A NATURAL LANGUAGE RESPONSE FOR THE USER."""
-
-        formatted_prompt = fmt_prompt.format(
+        if isinstance(raw_result, dict) and "description" in raw_result:
+            data_summary = f"User asked for a plot. The system generated this chart: {raw_result['description']}"
+        else:
+            data_summary = str(raw_result)
+        
+        formatted_prompt = ANALYSIS_FORMAT_PROMPT.format(
             query=user_query,
-            result=str(raw_result)
+            result=data_summary
         )
         
         try:
@@ -331,10 +183,21 @@ NOW GENERATE A NATURAL LANGUAGE RESPONSE FOR THE USER."""
 
     def answer(self, user_query: str, history_str: str="") -> dict:
         """Main method to process user query and return formatted response"""
-        # Generate Python code
-        raw_code = self._generate_python_code(user_query, history_str)
+        intent = self._decide_intent(user_query, history_str)
+        if intent == "GENERAL_CHAT":
+            return {
+                "text": self._format_response(user_query, "I'm here to help with your data analysis needs!"),
+                "result": {"type": "text", "data": "General chat response"}
+            }
         
-        # Sanitize and validate code
+        if intent == "OFFENSIVE":
+            return {
+                "text": self._format_response(user_query, "Offensive intent detected"),
+                "result": {"type": "text", "data": "Offensive intent detected."}
+            }
+        
+        raw_code = self._generate_python_code(user_query, history_str)
+
         try:
             clean_code = self._sanitize_code(raw_code)
         except Exception as e:
@@ -347,7 +210,6 @@ NOW GENERATE A NATURAL LANGUAGE RESPONSE FOR THE USER."""
         print("DEBUG: Generated Code:")
         print(clean_code)
         
-        # Execute code
         execution_result = self._execute_code(clean_code)
         
         # Format response based on result type
@@ -360,3 +222,36 @@ NOW GENERATE A NATURAL LANGUAGE RESPONSE FOR THE USER."""
             "text": summary,
             "result": execution_result
         }
+
+
+    def generate_dossier(self) -> dict:
+        preview = self.df.head(5).to_string()
+
+        prompt = DOSSIER_PROMPT.format(
+            schema=self.schema,
+            preview=preview
+        )
+
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.5,
+                ),
+            )
+            print("DEBUG: Dossier Response:")
+            print(response.text.strip())
+            parsed_json = json_repair.loads(response.text.strip())
+            if isinstance(parsed_json, dict):
+                return parsed_json
+            else:
+                print(f"WARNING: Dossier was not a dict: {type(parsed_json)}")
+                raise ValueError("Output was not a dictionary")
+        except Exception as e:
+            print(f"Error generating dossier: {e}")
+            return {
+                "file_type": "Unknown Dataset",
+                "briefing": "I couldn't analyze the file automatically, but I'm ready for your questions.",
+                "key_entities": list(self.df.columns[:3]),
+                "recommended_actions": ["Show me the first 5 rows", "Count the rows"]
+            }
