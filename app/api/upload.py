@@ -3,7 +3,7 @@ from fastapi import APIRouter, UploadFile, File, Depends
 import shutil
 from app.core.deps import get_current_user
 from app.services.ingestion import process_file
-from app.models.db_models import User, File as DBFile
+from app.models.db_models import User, File as DBFile, Chat
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.services.agent import DataAgent
@@ -32,6 +32,15 @@ def upload_file(file: UploadFile = File(...),
     db.commit()
     db.refresh(new_file) # To get the new file's ID and other info
 
+    # create a chat
+    chat = Chat(
+        file_id=new_file.id,
+        user_id=user.id,
+    )
+    db.add(chat)
+    db.commit()
+    db.refresh(chat)
+
     dossier = None
     try:
         agent = DataAgent(file_path=f"data/{metadata['filename']}")
@@ -46,4 +55,4 @@ def upload_file(file: UploadFile = File(...),
             "recommended_actions": []
         }
 
-    return {"status": "success", "file_id": str(new_file.id), "metadata": metadata, "dossier": dossier}
+    return {"status": "success", "file_rows": new_file.row_count, "file_id": str(new_file.id), "metadata": metadata, "dossier": dossier, "chat_id": str(chat.id)}
