@@ -34,6 +34,7 @@ class File(Base):
 
     owner = relationship("User", back_populates="files")
     chats = relationship("Chat", back_populates="file", cascade="all, delete-orphan")
+    dossier = relationship("Dossier", back_populates="file", uselist=False, cascade="all, delete-orphan")
 
 
 class Chat(Base):
@@ -43,11 +44,14 @@ class Chat(Base):
     
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     file_id = Column(UUID(as_uuid=True), ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
+    dossier_id = Column(UUID(as_uuid=True), ForeignKey("dossiers.id", ondelete="SET NULL"), nullable=True)
     
     title = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    dossier = relationship("Dossier", back_populates="chats")
+    
     user = relationship("User", back_populates="chats")
     file = relationship("File", back_populates="chats")
     messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
@@ -66,3 +70,22 @@ class Message(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     chat = relationship("Chat", back_populates="messages")
+
+
+class Dossier(Base):
+    __tablename__ = "dossiers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    file_id = Column(UUID(as_uuid=True), ForeignKey("files.id", ondelete="CASCADE"), unique=True, nullable=False)
+    
+    file_type = Column(String(100))
+    briefing = Column(Text)
+    key_entities = Column(JSONB)       
+    recommended_actions = Column(JSONB) 
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    file = relationship("File", back_populates="dossier")
+    
+    chats = relationship("Chat", back_populates="dossier")

@@ -42,3 +42,16 @@ CREATE TABLE messages (
 CREATE INDEX idx_files_user_id ON files(user_id);
 CREATE INDEX idx_chats_user_id ON chats(user_id);
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
+
+CREATE TABLE dossiers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_id UUID NOT NULL UNIQUE REFERENCES files(id) ON DELETE CASCADE,
+    file_type VARCHAR(100),
+    briefing TEXT,
+    key_entities JSONB,
+    recommended_actions JSONB,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE chats 
+ADD COLUMN dossier_id UUID REFERENCES dossiers(id) ON DELETE SET NULL;

@@ -14,6 +14,7 @@ class ChatOut(BaseModel):
     title: str | None
     file_id: UUID
     created_at: datetime
+    type: str
 
     class Config:
         from_attributes = True

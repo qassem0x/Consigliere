@@ -38,4 +38,33 @@ def get_my_chats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return db.query(Chat).filter(Chat.user_id == current_user.id).all()
+    
+    chats = db.query(Chat).filter(Chat.user_id == current_user.id).order_by(Chat.created_at.desc()).all()
+    
+    for chat in chats:
+        chat.type = "excel"
+        chat.title = chat.file.filename
+    return chats 
+
+
+@router.get("/chats/{chat_id}/dossier")
+def get_chat_dossier(
+    chat_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == current_user.id).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    dossier = chat.dossier
+    if not dossier:
+        raise HTTPException(status_code=404, detail="Dossier not found for this chat")
+    
+    return {
+        "file_type": dossier.file_type,
+        "created_at": dossier.created_at,
+        "briefing": dossier.briefing,
+        "key_entities": dossier.key_entities,
+        "recommended_actions": dossier.recommended_actions
+    }
