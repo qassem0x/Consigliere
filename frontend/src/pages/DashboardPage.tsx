@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ChatType, Dossier, Message } from '../types';
@@ -151,7 +151,7 @@ export const DashboardPage: React.FC = () => {
                 setView('home');
             }
         }
-    }, [searchParams, activeChatId, fetchChatData]);
+    }, [searchParams.get('chatId'), activeChatId]);
 
 
     const processMessage = useCallback(async (text: string) => {
@@ -194,8 +194,11 @@ export const DashboardPage: React.FC = () => {
     }, [activeChatId]);
 
     const handleSendMessage = useCallback(() => {
-        processMessage(input);
-        setInput('');
+        const messageText = input.trim();
+        if (messageText) {
+            processMessage(messageText);
+            setInput('');
+        }
     }, [input, processMessage]);
     
     const handleRecommendedAction = useCallback((actionText: string) => {

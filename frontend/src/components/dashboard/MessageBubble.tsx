@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { Rose, User, Terminal, Code2, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Message } from '../../types';
@@ -9,7 +9,7 @@ interface MessageBubbleProps {
     idx: number;
 }
 
-const TacticalCodeBlock: React.FC<{ code: string; type: string }> = ({ code, type }) => {
+const TacticalCodeBlock: React.FC<{ code: string; type: string }> = memo(({ code, type }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [copied, setCopied] = useState(false);
 
@@ -63,11 +63,10 @@ const TacticalCodeBlock: React.FC<{ code: string; type: string }> = ({ code, typ
             )}
         </div>
     );
-};
+});
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, idx }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx }) => {
     const isAssistant = msg.role === 'assistant';
-    console.log(msg)
     return (
         <div key={idx} className={`flex gap-4 max-w-4xl mx-auto ${isAssistant ? 'justify-start' : 'justify-end'}`}>
             {/* Assistant Avatar */}
@@ -131,4 +130,4 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, idx }) => {
             )}
         </div>
     );
-};
+});

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Rose, User, Send, Command, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, memo } from 'react';
+import { Rose, User, Send, Command, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { DossierView } from '../DossierView';
 import { Message } from '../../types';
@@ -17,7 +17,7 @@ interface ChatViewProps {
     onActionClick: (action: string) => void;
 }
 
-export const MessageTable: React.FC<{ data: any[] }> = ({ data }) => {
+export const MessageTable: React.FC<{ data: any[] }> = memo(({ data }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     
     if (!data || data.length === 0) return null;
@@ -28,8 +28,48 @@ export const MessageTable: React.FC<{ data: any[] }> = ({ data }) => {
     
     const displayedData = isExpanded ? data : data.slice(0, ROW_LIMIT);
 
+    const downloadCSV = () => {
+        const csvContent = [
+            headers.join(','),
+            ...data.map(row => 
+                headers.map(header => {
+                    const value = row[header];
+                    // Handle values that contain commas or quotes by wrapping in quotes
+                    if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+                        return `"${value.replace(/"/g, '""')}"`;
+                    }
+                    return value;
+                }).join(',')
+            )
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `query_results_${Date.now()}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="mt-4 rounded-lg border border-white/10 bg-black/20 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 bg-white/[0.03] border-b border-white/5">
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+                        Query Results ({data.length} rows)
+                    </span>
+                </div>
+                <button
+                    onClick={downloadCSV}
+                    className="p-1.5 text-slate-600 hover:text-rose-400 hover:bg-rose-500/5 rounded transition-all"
+                    title="Download as CSV"
+                >
+                    <Download size={14} />
+                </button>
+            </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                     <thead className="bg-white/5 text-rose-500 font-mono text-[10px] uppercase">
@@ -76,9 +116,9 @@ export const MessageTable: React.FC<{ data: any[] }> = ({ data }) => {
             )}
         </div>
     );
-};
+});
 
-export const ChatView: React.FC<ChatViewProps> = ({
+export const ChatView: React.FC<ChatViewProps> = memo(({
     messages,
     isLoading,
     input,
@@ -165,4 +205,4 @@ export const ChatView: React.FC<ChatViewProps> = ({
             )}
         </div>
     );
-};
+});

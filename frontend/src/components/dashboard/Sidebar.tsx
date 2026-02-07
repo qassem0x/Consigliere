@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Rose, Plus, Cpu, ShieldCheck, LogOut, Activity, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ChatType } from '../../types';
@@ -14,7 +14,7 @@ interface SidebarProps {
     onLogout: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
+export const Sidebar: React.FC<SidebarProps> = memo(({
     isSidebarOpen,
     userChats,
     activeChatId,
@@ -126,4 +126,4 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
         </aside>
     );
-};
+});

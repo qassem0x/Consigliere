@@ -13,6 +13,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 import litellm
 
 from app.core.prompts import ANALYSIS_FORMAT_PROMPT, ANALYSIS_SYSTEM_PROMPT, DOSSIER_PROMPT, ROUTER_PROMPT
+from app.services.cache import DataCache
 
 dotenv.load_dotenv()
 
@@ -23,7 +24,9 @@ litellm.set_verbose = False  # Set to True for debugging
 MODEL_NAME = os.getenv("MODEL_NAME", "ollama/llama3.2")  # Default to local
 class DataAgent:
     def __init__(self, file_path: str):
-        self.df = pd.read_parquet(file_path)
+        self.cache_manager = DataCache()
+        self.df = self.cache_manager.get_data(file_path)
+        
         self.schema = "\n".join([f"- {col}: {dtype}" for col, dtype in self.df.dtypes.items()])
         self.model_name = MODEL_NAME
 
@@ -315,9 +318,10 @@ class DataAgent:
         
         if execution_result["type"] == "error":
             summary = f"I encountered an error while processing your request: {execution_result['data']}"
+        elif execution_result["type"] == "table":
             summary = self._format_response(user_query, execution_result['data'])
-        elif execution_result["type"] == "image" or execution_result["type"] == "table":
-            summary = f"I've created a visualization for you: {execution_result.get('description', '')}"
+        elif execution_result["type"] == "image":
+            summary = self._format_response(user_query, f"I've created a visualization for you: {execution_result.get('description', '')}")
         else:
             summary = self._format_response(user_query, execution_result["data"])
         
