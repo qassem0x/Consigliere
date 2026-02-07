@@ -321,7 +321,7 @@ class DataAgent:
         elif execution_result["type"] == "table":
             # WARNING: Add Option later for user if he wants to send data to llm or not
             if True:
-                summary = self._format_response(user_query, execution_result['data'][:5] + "... That's only data sample due to response length limits. The full result has " + str(execution_result.get("total_rows", "many")) + " rows. so don't make assumptions based on just the preview.")
+                summary = self._format_response(user_query, execution_result['data'])
             else:
                 # just use first generated description if user doesn't want to send data to llm
                 summary = execution_result['description'] 
