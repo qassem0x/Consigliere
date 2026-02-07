@@ -15,7 +15,6 @@ import { WizardModal } from '../components/dashboard/WizardModal';
 export const DashboardPage: React.FC = () => {
     const { logout } = useAuth();
 
-    // UI State
     const [view, setView] = useState<'home' | 'chat' | 'wizard'>('home');
     const [isSidebarOpen, setSidebarOpen] = useState(true);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -35,23 +34,16 @@ export const DashboardPage: React.FC = () => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // --- SCROLL FIX START ---
-    // Intelligent Auto-scroll
+    // Scroll Logic
     useEffect(() => {
         if (!scrollRef.current) return;
-
-        // 1. If we have messages (Chat History), scroll to BOTTOM to see the latest
         if (messages.length > 0) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        } 
-        // 2. If NO messages (Just uploaded a file / Reading Dossier), scroll to TOP
-        else {
+        } else {
             scrollRef.current.scrollTop = 0;
         }
     }, [messages]);
-    // --- SCROLL FIX END ---
 
-    // Load Chats Sidebar
     const loadUserChats = useCallback(async () => {
         try {
             const chats: ChatType[] = await chatService.loadUserChats();
@@ -66,6 +58,21 @@ export const DashboardPage: React.FC = () => {
     }, [loadUserChats]);
 
     const handleNewChat = useCallback(() => setView('wizard'), []);
+
+    const handleDeleteChat = useCallback(async (chatId: string) => {
+        try {
+            await chatService.deleteChat(chatId);
+            
+            setUserChats(prev => prev.filter(chat => chat.id !== chatId));
+            
+            if (activeChatId === chatId) {
+                setSearchParams({});
+            }
+        } catch (error) {
+            console.error("Failed to delete chat:", error);
+            alert("Failed to delete dossier. Please try again.");
+        }
+    }, [activeChatId, setSearchParams]);
 
     const fetchChatData = useCallback(async (id: string) => {
         setActiveChatId(id);
@@ -121,16 +128,28 @@ export const DashboardPage: React.FC = () => {
         }
     }, []);
 
-    // 2. Interaction Handler: Passed to Sidebar. ONLY updates URL.
     const handleChatSelect = useCallback((id: string) => {
         setSearchParams({ chatId: id });
     }, [setSearchParams]);
 
-    // 3. The "Brain": Watches URL changes and triggers the fetch
+    // Robust URL Syncing ---
     useEffect(() => {
         const chatIdFromUrl = searchParams.get('chatId');
-        if (chatIdFromUrl && chatIdFromUrl !== activeChatId) {
-            fetchChatData(chatIdFromUrl);
+
+        if (chatIdFromUrl) {
+            // If URL has ID, fetch data (only if different)
+            if (chatIdFromUrl !== activeChatId) {
+                fetchChatData(chatIdFromUrl);
+            }
+        } else {
+            // If URL is empty, BUT we still have an active chat in state,
+            // it means we just deleted it or navigated back. Reset to Home.
+            if (activeChatId) {
+                setActiveChatId(null);
+                setMessages([]);
+                setCurrentDossier(null);
+                setView('home');
+            }
         }
     }, [searchParams, activeChatId, fetchChatData]);
 
@@ -197,7 +216,6 @@ export const DashboardPage: React.FC = () => {
             setUploadProgress({ phase: 'analyzing', fileName: file.name });
             const analysisData = await fileService.createDossier(uploadData.file_id);
 
-            // Update URL and let the Effect handle the loading
             setSearchParams({ chatId: analysisData.chat_id });
             
             await loadUserChats();
@@ -233,6 +251,7 @@ export const DashboardPage: React.FC = () => {
                 onNewChat={handleNewChat}
                 onLoadChat={handleChatSelect} 
                 onLogout={logout}
+                onDeleteChat={handleDeleteChat}
             />
 
             <main className="flex-1 flex flex-col relative min-w-0 bg-[#050505]">

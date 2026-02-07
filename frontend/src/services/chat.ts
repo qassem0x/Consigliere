@@ -12,5 +12,9 @@ export const chatService = {
   sendMessage: async (chatId: string, content: string) => {
     const response = await api.post(`/messages/${chatId}`, { content });
     return response.data;
-  }
+  },
+  async deleteChat(chatId: string) {
+    const res = await api.delete(`/chats/${chatId}`);
+    return true;
+}
 };

@@ -68,3 +68,16 @@ def get_chat_dossier(
         "key_entities": dossier.key_entities,
         "recommended_actions": dossier.recommended_actions
     }
+
+@router.delete("/chats/{chat_id}", status_code=204)
+def delete_chat(
+    chat_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == current_user.id).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    db.delete(chat)
+    db.commit()

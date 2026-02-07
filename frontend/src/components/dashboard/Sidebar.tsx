@@ -1,5 +1,5 @@
 import React from 'react';
-import { Rose, Plus, Cpu, ShieldCheck, LogOut, Activity, FileSpreadsheet, Database } from 'lucide-react';
+import { Rose, Plus, Cpu, ShieldCheck, LogOut, Activity, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ChatType } from '../../types';
 import { SidebarItem, SidebarCollapsedItem } from './SidebarItem';
@@ -10,6 +10,7 @@ interface SidebarProps {
     activeChatId: string | null;
     onNewChat: () => void;
     onLoadChat: (id: string) => void;
+    onDeleteChat: (id: string) => void;
     onLogout: () => void;
 }
 
@@ -19,6 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     activeChatId,
     onNewChat,
     onLoadChat,
+    onDeleteChat,
     onLogout
 }) => {
     const { user } = useAuth();
@@ -62,8 +64,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
                 {userChats.map(item => (
                     isSidebarOpen ? 
-                        <SidebarItem key={item.id} item={item} isActive={activeChatId === item.id} onLoadChat={onLoadChat} /> : 
-                        <SidebarCollapsedItem key={item.id} item={item} onLoadChat={onLoadChat} />
+                        <SidebarItem 
+                            key={item.id} 
+                            item={item} 
+                            isActive={activeChatId === item.id} 
+                            onLoadChat={onLoadChat}
+                            onDeleteChat={onDeleteChat} 
+                        /> : 
+                        <SidebarCollapsedItem 
+                            key={item.id} 
+                            item={item} 
+                            onLoadChat={onLoadChat}
+                        />
                 ))}
             </div>
 
@@ -71,7 +83,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="p-4 bg-black/20 border-t border-white/5">
                 {isSidebarOpen ? (
                     <div className="space-y-4">
-                        {/* Stats */}
                         <div className="grid grid-cols-2 gap-2">
                             <div className="bg-white/5 rounded p-2 border border-white/5">
                                 <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mb-1">
@@ -86,7 +97,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 <div className="text-xs font-mono text-rose-400">ENCRYPTED</div>
                             </div>
                         </div>
-                        {/* User */}
                         <div className="flex items-center justify-between pt-2 border-t border-white/5">
                             <div className="flex items-center gap-2.5">
                                 <div className="relative">
