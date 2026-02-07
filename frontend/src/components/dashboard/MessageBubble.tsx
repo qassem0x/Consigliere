@@ -67,7 +67,7 @@ const TacticalCodeBlock: React.FC<{ code: string; type: string }> = ({ code, typ
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, idx }) => {
     const isAssistant = msg.role === 'assistant';
-
+    console.log(msg)
     return (
         <div key={idx} className={`flex gap-4 max-w-4xl mx-auto ${isAssistant ? 'justify-start' : 'justify-end'}`}>
             {/* Assistant Avatar */}

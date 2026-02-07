@@ -123,6 +123,11 @@ CORE REQUIREMENTS:
    - Don't re-execute previous queries unless user says "again" or "repeat"
    - Build on previous results when user says "and also", "plus", "additionally"
 
+10. PROVIDE DESCRIPTION 
+      - create variable `description` that gives a brief summary of what the result represents on the context of data meanings and make it a clear description and don't express tech details, especially tables and charts.
+      - When showing a table, add a brief description of what it represents
+      - Example: "Here are the total sales by region. The Northeast has the highest revenue."
+
 CRITICAL RULES:
 1. When filtering text/string columns (like names, cities, companies, ... etc), ALWAYS use case-insensitive partial matching.
 2. PREFERRED PATTERN: `df[df['col'].str.contains('term', case=False, na=False)]`

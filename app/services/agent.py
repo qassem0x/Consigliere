@@ -152,7 +152,8 @@ class DataAgent:
                 exec(clean_code, {"__builtins__": __builtins__}, local_scope)
             
             result = local_scope.get('result')
-
+            result_description = local_scope.get('description', '')
+            print(f"DEBUG: Query Description: {result_description}")
             # Check if a plot was created
             if plt.gcf().get_axes():
                 ax = plt.gca()
@@ -187,7 +188,8 @@ class DataAgent:
                     "type": "table",
                     "data": result.head(50).fillna("").to_dict(orient="records"),
                     "columns": list(result.columns),
-                    "total_rows": len(result)
+                    "total_rows": len(result),
+                    "description": result_description
                 }
 
             # Series result (convert to DataFrame)
@@ -205,7 +207,8 @@ class DataAgent:
                     "type": "table",
                     "data": df_temp.head(50).fillna("").to_dict(orient="records"),
                     "columns": list(df_temp.columns),
-                    "total_rows": len(df_temp)
+                    "total_rows": len(df_temp),
+                    "description": result_description
                 }
             
             # Direct result (string, number, dict, list, etc.)
@@ -304,13 +307,16 @@ class DataAgent:
         print("=" * 80)
         
         execution_result = self._execute_code(clean_code)
+
+        print("=" * 80)
+        print("DEBUG: Execution Result:")
+        print(execution_result)
+        print("=" * 80)
         
         if execution_result["type"] == "error":
             summary = f"I encountered an error while processing your request: {execution_result['data']}"
-        elif execution_result["type"] == "table":
-            row_count = execution_result.get("total_rows", len(execution_result.get("data", [])))
-            summary = f"Here are the results ({row_count} rows):"
-        elif execution_result["type"] == "image":
+            summary = self._format_response(user_query, execution_result['data'])
+        elif execution_result["type"] == "image" or execution_result["type"] == "table":
             summary = f"I've created a visualization for you: {execution_result.get('description', '')}"
         else:
             summary = self._format_response(user_query, execution_result["data"])
