@@ -3,31 +3,36 @@ import os
 from fastapi import HTTPException
 import uuid
 
+def _transform_to_parquet(temp_file_path: str, original_filename: str):
+    try:
+        if temp_file_path.endswith(".csv"):
+            df = pd.read_csv(temp_file_path)
+        elif temp_file_path.endswith(".xlsx"):
+            df = pd.read_excel(temp_file_path)
+        else:
+            raise ValueError("Unsupported format. Please upload CSV or Excel.")
 
-def process_file(file_path: str):
+        df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_").str.replace(r"[^\w]", "", regex=True)
 
-    if file_path.endswith(".csv"):
-        df = pd.read_csv(file_path)
-    elif file_path.endswith(".xlsx"):
-        df = pd.read_excel(file_path)
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported file format. Use CSV or Excel.")
+        file_uuid = str(uuid.uuid4())
+        parquet_filename = f"{file_uuid}.parquet"
 
-    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_").str.replace(r"[^\w]", "", regex=True)
+        os.makedirs("data", exist_ok=True)
+        parquet_path = f"data/{parquet_filename}"
 
-    # Convert to PARQUET for higher speed 
-    file_id = str(uuid.uuid4())
-    parquet_filename = f"{file_id}.parquet"
-    parquet_path = f"data/{parquet_filename}"
+        df.to_parquet(parquet_path, index=False)
 
-    df.to_parquet(parquet_path)
+        metadata = {
+            "file_id": file_uuid,
+            "filename": parquet_filename, # The system name (UUID.parquet)
+            "rows": df.shape[0],
+            "columns": list(df.columns)
+        }
+        
+        return metadata
 
-    os.remove(file_path)
-
-    return {
-        "file_id":file_id,
-        "filename":parquet_filename,
-        "rows":df.shape[0],
-        "columns":list(df.columns),
-        "preview": df.head(5).to_dict(orient="records")
-    }
+    except Exception as e:
+        raise e
+    finally:
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)

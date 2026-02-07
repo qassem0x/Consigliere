@@ -319,7 +319,12 @@ class DataAgent:
         if execution_result["type"] == "error":
             summary = f"I encountered an error while processing your request: {execution_result['data']}"
         elif execution_result["type"] == "table":
-            summary = self._format_response(user_query, execution_result['data'])
+            # WARNING: Add Option later for user if he wants to send data to llm or not
+            if True:
+                summary = self._format_response(user_query, execution_result['data'][:5] + "... That's only data sample due to response length limits. The full result has " + str(execution_result.get("total_rows", "many")) + " rows. so don't make assumptions based on just the preview.")
+            else:
+                # just use first generated description if user doesn't want to send data to llm
+                summary = execution_result['description'] 
         elif execution_result["type"] == "image":
             summary = self._format_response(user_query, f"I've created a visualization for you: {execution_result.get('description', '')}")
         else:

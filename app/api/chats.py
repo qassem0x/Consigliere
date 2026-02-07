@@ -81,3 +81,14 @@ def delete_chat(
     
     db.delete(chat)
     db.commit()
+
+    # get file path to invalidate cache & delete from disk
+    file_path = "data/" + chat.file.file_path
+    if file_path:
+        from app.services.cache import DataCache
+        cache = DataCache()
+        cache.invalidate(file_path)
+
+        import os
+        if os.path.exists(file_path):
+            os.remove(file_path)
