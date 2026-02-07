@@ -68,10 +68,18 @@ def send_message(
     
     answer = agent.answer(msg_data.content, history_str)
     
+    code_obj = None
+    if answer.get("python"):
+        code_obj = {
+            "type": "python",
+            "code": answer.get("python", "")
+        }
+
     assistant_msg = Message(
         chat_id=chat_id,
         role="assistant",
-        content=json.dumps(answer)
+        content=json.dumps(answer),
+        related_code=code_obj 
     )
 
     db.add(assistant_msg)

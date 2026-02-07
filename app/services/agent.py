@@ -16,8 +16,10 @@ dotenv.load_dotenv()
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-MODEL_NAME = 'models/gemma-3-27b-it' 
+# MODEL_NAME = 'models/gemma-3-27b-it' 
 # MODEL_NAME = 'models/gemini-3-flash-preview'  # Stronger Model
+
+MODEL_NAME = os.getenv("MODEL_NAME")
 
 class DataAgent:
     def __init__(self, file_path: str):
@@ -131,14 +133,13 @@ class DataAgent:
 
             # Series result (convert to table format)
             elif isinstance(result, pd.Series):
-                df_temp = result.reset_index() 
-                df_temp.columns = ["Category", "Value"]
+                df_temp = result.to_frame().T
+                
                 return {
                     "type": "table",
-                    "data": df_temp.head(50).fillna("").to_dict(orient="records"),
-                    "columns": ["Category", "Value"]
+                    "data": df_temp.fillna("").to_dict(orient="records"),
+                    "columns": list(df_temp.columns)
                 }
-
             # Direct result (string, number, etc.)
             elif result is not None:
                 return {
@@ -220,28 +221,64 @@ class DataAgent:
         
         return {
             "text": summary,
-            "result": execution_result
+            "result": execution_result,
+            "python": clean_code
         }
 
+    # ... inside DataAgent class ...
+
+    def _calculate_stats(self) -> str:
+        """Runs a tactical scan of the dataframe to extract key metrics."""
+        stats = []
+        
+        stats.append(f"Total Records: {len(self.df)}")
+        stats.append(f"Total Columns: {len(self.df.columns)}")
+        
+        for col in self.df.select_dtypes(include=['datetime', 'datetimetz']).columns:
+            start = self.df[col].min()
+            end = self.df[col].max()
+            stats.append(f"Timeframe ({col}): {start} to {end}")
+
+        # Categorical COls
+        for col in self.df.select_dtypes(include=['object', 'category']).columns[:5]:
+            try:
+                if self.df[col].nunique() < 50: 
+                    top_3 = self.df[col].value_counts().head(3).index.tolist()
+                    stats.append(f"Top Entities in '{col}': {', '.join(map(str, top_3))}")
+            except:
+                pass
+
+        # Numerical Col
+        for col in self.df.select_dtypes(include=['number']).columns[:3]: 
+            avg = self.df[col].mean()
+            mx = self.df[col].max()
+            stats.append(f"Metric '{col}': Max={mx:,.2f}, Avg={avg:,.2f}")
+
+        return "\n".join(stats)
 
     def generate_dossier(self) -> dict:
+        stats_summary = self._calculate_stats()
+        
         preview = self.df.head(5).to_string()
 
-        prompt = DOSSIER_PROMPT.format(
+        enhanced_prompt = DOSSIER_PROMPT.format(
             schema=self.schema,
-            preview=preview
+            preview=preview,
+            stats=stats_summary
         )
 
         try:
             response = self.model.generate_content(
-                prompt,
+                enhanced_prompt,
                 generation_config=genai.types.GenerationConfig(
-                    temperature=0.5,
+                    temperature=0.4, # Lower temp for more factual adherence
                 ),
             )
             print("DEBUG: Dossier Response:")
-            print(response.text.strip())
+            # print(response.text.strip())
+            
             parsed_json = json_repair.loads(response.text.strip())
+            
             if isinstance(parsed_json, dict):
                 return parsed_json
             else:

@@ -67,6 +67,8 @@ class Message(Base):
     role = Column(String(50), nullable=False) 
     content = Column(Text, nullable=False)
     artifacts = Column(JSONB)  
+    # Stores { "type": "python", "code": "..." }
+    related_code = Column(JSONB)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     chat = relationship("Chat", back_populates="messages")

@@ -1,10 +1,17 @@
 export interface Message {
-  id?: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  created_at?: string;
+    id?: string;
+    role: 'user' | 'assistant';
+    content: string;
+    created_at?: string;
+    
+    tableData?: any[];
+    imageData?: string;
+    
+    related_code?: {
+        type: string;
+        code: string;
+    } | null;
 }
-
 export interface ExcelData {
   fileName: string;
   sheets: {

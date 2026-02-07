@@ -1,5 +1,5 @@
-import React from 'react';
-import { Rose, User, Send, Command } from 'lucide-react';
+import React, { useState } from 'react';
+import { Rose, User, Send, Command, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { DossierView } from '../DossierView';
 import { Message } from '../../types';
@@ -14,8 +14,69 @@ interface ChatViewProps {
     scrollRef: React.RefObject<HTMLDivElement>;
     onInputChange: (value: string) => void;
     onSendMessage: () => void;
-    onCloseDossier: () => void;
+    onActionClick: (action: string) => void;
 }
+
+export const MessageTable: React.FC<{ data: any[] }> = ({ data }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    
+    if (!data || data.length === 0) return null;
+    
+    const headers = Object.keys(data[0]);
+    const ROW_LIMIT = 10;
+    const hasMore = data.length > ROW_LIMIT;
+    
+    const displayedData = isExpanded ? data : data.slice(0, ROW_LIMIT);
+
+    return (
+        <div className="mt-4 rounded-lg border border-white/10 bg-black/20 flex flex-col overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-white/5 text-rose-500 font-mono text-[10px] uppercase">
+                        <tr>
+                            {headers.map(h => (
+                                <th key={h} className="px-4 py-2.5 border-b border-white/10 whitespace-nowrap">
+                                    {h}
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="text-slate-300">
+                        {displayedData.map((row, i) => (
+                            <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                                {headers.map(h => (
+                                    <td key={h} className="px-4 py-2 whitespace-nowrap text-xs">
+                                        {row[h]}
+                                    </td>
+                                ))}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Expansion Toggle */}
+            {hasMore && (
+                <button 
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="w-full py-2 flex items-center justify-center gap-2 text-[10px] font-mono uppercase tracking-widest text-rose-500/80 hover:text-rose-400 hover:bg-rose-500/10 border-t border-white/5 transition-all"
+                >
+                    {isExpanded ? (
+                        <>
+                            <ChevronUp size={12} />
+                            Collapse View
+                        </>
+                    ) : (
+                        <>
+                            <ChevronDown size={12} />
+                            View {data.length - ROW_LIMIT} More Rows
+                        </>
+                    )}
+                </button>
+            )}
+        </div>
+    );
+};
 
 export const ChatView: React.FC<ChatViewProps> = ({
     messages,
@@ -26,7 +87,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     scrollRef,
     onInputChange,
     onSendMessage,
-    onCloseDossier
+    onActionClick
 }) => {
     return (
         <div className="absolute inset-0 flex flex-col bg-[#050505]">
@@ -45,7 +106,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 ) : (
                     <>
                         {currentDossier && (
-                            <DossierView dossier={currentDossier} onClose={onCloseDossier} />
+                            <DossierView dossier={currentDossier} onActionClick={onActionClick} />
                         )}
                         {messages.map((msg, idx) => (
                             <MessageBubble key={msg.id || idx} msg={msg} idx={idx} />

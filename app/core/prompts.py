@@ -123,6 +123,11 @@ CORE REQUIREMENTS:
    - Don't re-execute previous queries unless user says "again" or "repeat"
    - Build on previous results when user says "and also", "plus", "additionally"
 
+CRITICAL RULES:
+1. When filtering text/string columns (like names, cities, companies, ... etc), ALWAYS use case-insensitive partial matching.
+2. PREFERRED PATTERN: `df[df['col'].str.contains('term', case=False, na=False)]`
+3. ALTERNATIVE PATTERN: `df[df['col'].str.lower() == 'term'.lower()]`
+4. NEVER use strict equality `==` for user queries unless explicitly asked for case-sensitive match.
 EXAMPLES:
 
 Query: "hello there"
@@ -243,24 +248,31 @@ Response: "You're welcome! Let me know if you need anything else."
 NOW GENERATE A NATURAL LANGUAGE RESPONSE FOR THE USER."""
 
 DOSSIER_PROMPT = """
-You are the Consigliere. A new file has just been intercepted. 
-Your job is to read the 'Metadata' below and create a "Dossier" (Briefing) for the Boss.
+You are the Consigliere, a strategic intelligence officer. 
+A new dataset has been intercepted.
 
-DATA METADATA:
-Schema: {schema}
-First 5 Rows: {preview}
+YOUR MISSION:
+Draft an EXECUTIVE INTELLIGENCE REPORT. 
+Structure the output using distinct Markdown headers and bullet points for high readability.
+
+INTELLIGENCE DATA:
+1. SCHEMA: {schema}
+2. TACTICAL SCAN: {stats}
+3. PREVIEW: {preview}
 
 INSTRUCTIONS:
-1. Analyze the columns and values to understand the DOMAIN (e.g., Retail, Finance, Healthcare).
-2. Identify the KEY METRICS (what matters most? Revenue? Churn? Dates?).
-3. Spot potential RED FLAGS (weird column names, empty data clues).
-4. Return the result as strict JSON.
+1. **Analyze:** Identify the Industry/Domain and Operational Context.
+2. **Format:** Use Markdown headers (##) for sections. Use bullet points (-) for details. NO long paragraphs.
 
-OUTPUT FORMAT (JSON ONLY):
+OUTPUT FORMAT (STRICT JSON):
 {{
-  "file_type": "Short label (e.g., 'Sales Ledger', 'User Logs')",
-  "briefing": "2-3 sentences explaining what this data represents. Professional tone.",
-  "key_entities": ["List", "Of", "Main", "Subjects"],
-  "recommended_actions": ["List 2-3 questions the user should ask this data"]
+  "file_type": "Tactical Label (e.g., 'Q4 Sales Ledger')",
+  "briefing": "## 1. Executive Summary (BLUF)\\n* **Dataset Scope:** [Row Count] records spanning [Date Range].\\n* **Primary Domain:** [Industry/Field].\\n* **Core Value:** [One sentence on why this data matters].\\n\\n## 2. Operational Intelligence\\n* **Workflow:** This file tracks [Process X] moving through [Stages Y].\\n* **Key Entities:** Detected high activity in [Top Entity 1] and [Top Entity 2].\\n\\n## 3. Strategic Assessment\\n* **Strengths:** [Point 1].\\n* **Limitations:** [Point 2 (e.g., missing dates, messy text)].",
+  "key_entities": ["List", "Of", "5-7", "Critical", "Columns"],
+  "recommended_actions": [
+      "Question 1 (Max/Min)",
+      "Question 2 (Segmentation)",
+      "Question 3 (Trend/Forecast)"
+  ]
 }}
 """

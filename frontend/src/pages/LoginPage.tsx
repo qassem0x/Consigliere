@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, LockKeyhole, AlertCircle, Loader2 } from 'lucide-react';
 import { AuthLayout, InputGroup } from '../components';
 import { useTranslation } from '../contexts/TranslationContext';
-import { api } from '../utils/api'; // Assuming this is your Axios instance
+import { api } from '../utils/api'; 
 import {useAuth} from "../contexts/AuthContext"
 
 export const LoginPage: React.FC = () => {

@@ -69,7 +69,6 @@ export const LandingPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        {/* 2. LOGIC FIX: Check if User exists */}
                         {user ? (
                             // LOGGED IN VIEW
                             <div className="flex items-center gap-4">

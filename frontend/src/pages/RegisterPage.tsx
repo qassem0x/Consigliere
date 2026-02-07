@@ -9,12 +9,12 @@ import { useAuth } from '../contexts/AuthContext';
 export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { login } = useAuth(); // Hook to set global auth state
+  const { login } = useAuth(); 
 
   // Form State
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [company, setCompany] = useState(''); // Note: Not sent to backend based on current API
+  const [company, setCompany] = useState(''); 
   const [password, setPassword] = useState('');
   
   // UI State

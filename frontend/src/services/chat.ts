@@ -8,5 +8,9 @@ export const chatService = {
   loadChatHistory: async (chatId: string) => {
     const response = await api.get(`/messages/${chatId}`);
     return response.data;
+  },
+  sendMessage: async (chatId: string, content: string) => {
+    const response = await api.post(`/messages/${chatId}`, { content });
+    return response.data;
   }
 };

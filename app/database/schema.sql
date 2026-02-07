@@ -55,3 +55,6 @@ CREATE TABLE dossiers (
 
 ALTER TABLE chats 
 ADD COLUMN dossier_id UUID REFERENCES dossiers(id) ON DELETE SET NULL;
+
+ALTER TABLE messages 
+ADD COLUMN related_code JSONB;
