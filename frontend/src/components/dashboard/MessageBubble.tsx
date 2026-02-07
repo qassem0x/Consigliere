@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Rose, User, Terminal, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
+import { Rose, User, Terminal, Code2, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Message } from '../../types';
 import { MessageTable } from './ChatView';
@@ -21,43 +21,44 @@ const TacticalCodeBlock: React.FC<{ code: string; type: string }> = ({ code, typ
     };
 
     return (
-        <div className="mt-3 rounded-lg border border-white/10 bg-[#0a0a0b] overflow-hidden transition-all duration-300 hover:border-white/20">
-            {/* Header / Toggle */}
+        <div className="mt-4 group/code">
+            {/* Compact Toggle - Only icon + text on same line */}
             <button 
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex items-center justify-between px-4 py-2 bg-white/[0.03] hover:bg-white/[0.05] transition-colors group"
+                className="flex items-center gap-1.5 text-[11px] font-mono text-slate-500 hover:text-rose-400 transition-colors mb-2"
             >
-                <div className="flex items-center gap-2 text-xs font-mono text-rose-500/80 group-hover:text-rose-400 transition-colors uppercase tracking-wider">
-                    <Terminal size={12} />
-                    <span>{type} Execution Logic</span>
-                </div>
-                <div className="flex items-center gap-3">
-                    <span className="text-[10px] text-slate-600 font-mono hidden group-hover:block transition-all">
-                        {isOpen ? 'COLLAPSE' : 'EXPAND'}
-                    </span>
-                    {isOpen ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-                </div>
+                <Code2 size={13} className="opacity-60" />
+                <span className="uppercase tracking-wide">View {type} Code</span>
+                <span className="text-slate-600 ml-1">({code.split('\n').length} lines)</span>
             </button>
 
+            {/* Collapsible Code Block */}
             {isOpen && (
-                <div className="relative border-t border-white/5">
-                    {/* Copy Button */}
-                    <button 
-                        onClick={handleCopy}
-                        className="absolute top-2 right-2 p-1.5 rounded-md bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all z-10"
-                        title="Copy to Clipboard"
-                    >
-                        {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
-                    </button>
+                <div className="rounded-lg border border-white/10 bg-[#0a0a0b] overflow-hidden">
+                    {/* Header with copy button */}
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.03] border-b border-white/5">
+                        <span className="text-[10px] font-mono text-slate-600 uppercase tracking-wider">
+                            Generated Code
+                        </span>
+                        <button 
+                            onClick={handleCopy}
+                            className="p-1 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-all"
+                            title="Copy to Clipboard"
+                        >
+                            {copied ? (
+                                <Check size={12} className="text-green-400" />
+                            ) : (
+                                <Copy size={12} />
+                            )}
+                        </button>
+                    </div>
 
-                    <div className="overflow-x-auto p-4 custom-scrollbar">
-                        <pre className="text-xs font-mono leading-relaxed text-slate-300">
+                    {/* Code Content */}
+                    <div className="overflow-x-auto p-3 custom-scrollbar max-h-[300px] overflow-y-auto">
+                        <pre className="text-[11px] font-mono leading-relaxed text-slate-300">
                             <code>{code}</code>
                         </pre>
                     </div>
-                    
-                    {/* Footer decoration */}
-                    <div className="h-1 bg-gradient-to-r from-rose-500/20 via-transparent to-transparent w-full"></div>
                 </div>
             )}
         </div>
@@ -113,7 +114,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ msg, idx }) => {
                     <MessageTable data={msg.tableData} />
                 )}
 
-                {/* 3. Code Block Rendering (The new Elite Part) */}
+                {/* Code Block - Now subtle and compact */}
                 {isAssistant && msg.related_code && (
                     <TacticalCodeBlock 
                         code={msg.related_code.code} 
