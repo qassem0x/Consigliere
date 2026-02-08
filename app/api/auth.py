@@ -10,6 +10,7 @@ from app.models.auth import UserCreate, Token, UserResponse
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.email == user.email).first()
@@ -18,18 +19,23 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         )
-    
+
     hashed_pwd = security.get_password_hash(user.password)
-    new_user = User(email=user.email, password_hash=hashed_pwd, full_name=user.full_name)
+    new_user = User(
+        email=user.email, password_hash=hashed_pwd, full_name=user.full_name
+    )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
+
     access_token = security.create_access_token(data={"sub": str(new_user.id)})
     return {"access_token": access_token, "token_type": "bearer"}
 
+
 @router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not security.verify_password(form_data.password, user.password_hash):
         raise HTTPException(
@@ -43,6 +49,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         )
     access_token = security.create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer"}
+
 
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_user)):

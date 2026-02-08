@@ -1,7 +1,8 @@
 import pandas as pd
-import os 
+import os
 from fastapi import HTTPException
 import uuid
+
 
 def _transform_to_parquet(temp_file_path: str, original_filename: str):
     try:
@@ -12,7 +13,12 @@ def _transform_to_parquet(temp_file_path: str, original_filename: str):
         else:
             raise ValueError("Unsupported format. Please upload CSV or Excel.")
 
-        df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_").str.replace(r"[^\w]", "", regex=True)
+        df.columns = (
+            df.columns.str.strip()
+            .str.lower()
+            .str.replace(" ", "_")
+            .str.replace(r"[^\w]", "", regex=True)
+        )
 
         file_uuid = str(uuid.uuid4())
         parquet_filename = f"{file_uuid}.parquet"
@@ -24,11 +30,11 @@ def _transform_to_parquet(temp_file_path: str, original_filename: str):
 
         metadata = {
             "file_id": file_uuid,
-            "filename": parquet_filename, # The system name (UUID.parquet)
+            "filename": parquet_filename,  # The system name (UUID.parquet)
             "rows": df.shape[0],
-            "columns": list(df.columns)
+            "columns": list(df.columns),
         }
-        
+
         return metadata
 
     except Exception as e:

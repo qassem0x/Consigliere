@@ -212,7 +212,9 @@ Available Columns:
  - Each step must be a clear, non redundant instruction that have meaning to the use and related to his question and executable with pandas/matplotlib.
  - Avoid vague steps like "analyze by region". Be specific: "Create a bar chart of total sales by region. X=Region, Y=Total Sales".
  - For tables, specify the exact columns, filters, and sorting. E.g., "Show Region, Total Sales, and Average Price for products in the 'Electronics' category, sorted by Total Sales descending."
-
+ - Generate Visualizations only if they add value. Don't create a chart if a simple metric or table can answer the question more effectively.
+ - For metrics, specify the exact calculation and formatting. E.g., "Calculate the global Average Survival Rate (round to 2 decimals) and format as 'Average Survival Rate: X%'."
+ - always end with a summary step that provides insights and interpretations of the results, not just the raw data.
 
 ### 3. ANALYZE THE INTENT (The "Cheat Sheet")
 Check what the user *really* wants and select the best view:

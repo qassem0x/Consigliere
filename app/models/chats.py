@@ -9,6 +9,7 @@ class ChatCreate(BaseModel):
     title: Optional[str] = None
     file_id: UUID
 
+
 class ChatOut(BaseModel):
     id: UUID
     title: str | None
