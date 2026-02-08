@@ -11,8 +11,9 @@ import json_repair
 from litellm import completion
 from tenacity import retry, stop_after_attempt, wait_exponential
 import litellm
+from typing import Dict, Any, List
 
-from app.core.prompts import ANALYSIS_FORMAT_PROMPT, ANALYSIS_SYSTEM_PROMPT, DOSSIER_PROMPT, ROUTER_PROMPT
+from app.core.prompts import ANALYSIS_FORMAT_PROMPT, ANALYSIS_SYSTEM_PROMPT, DOSSIER_PROMPT, PLANNER_PROMPT, ROUTER_PROMPT, STEP_EXECUTOR_PROMPT
 from app.services.cache import DataCache
 
 dotenv.load_dotenv()
@@ -27,6 +28,7 @@ class DataAgent:
         self.cache_manager = DataCache()
         self.df = self.cache_manager.get_data(file_path)
         
+        # TODO: Make the schema smarter to have physical types and logical types, and sample values for categorical columns
         self.schema = "\n".join([f"- {col}: {dtype}" for col, dtype in self.df.dtypes.items()])
         self.model_name = MODEL_NAME
 
@@ -83,28 +85,89 @@ class DataAgent:
             print(f"ROUTER ERROR: {e}")
             return "DATA_ACTION"  # Fail-safe: assume data question
 
-    def _generate_python_code(self, user_query: str, history_str: str = "") -> str:
-        """Generate Python code using LLM"""
+
+    def _generate_plan(self, user_query: str, history_str: str = ""):
         messages = [
             {
                 "role": "system",
-                "content": ANALYSIS_SYSTEM_PROMPT.format(
+                "content": PLANNER_PROMPT.format(
                     schema=self.schema,
                     history=history_str if history_str else "No previous conversation.",
                     query=user_query
                 )
             }
         ]
+        try:
+            plan = self._call_llm(messages, temperature=0.0, timeout=60)
+            print("DEBUG: Generated Plan:")
+            print(plan)
+
+            if '```' in plan:
+                plan = plan.replace("```json", "").replace("```", "").strip()
+
+            plan = json_repair.loads(plan)
+            
+            if "plan" not in plan or not isinstance(plan["plan"], list):
+                raise ValueError("Invalid plan structure")
+            
+
+            for step in plan['plan']:
+                if not all(k in step for k in ["step_number", "type", "description"]):
+                    raise ValueError(f"Step missing required fields: {step}")
+                if "depends_on" not in step:
+                    step["depends_on"] = []
+
+            return plan
+        except Exception as e:
+            print(f"DEBUG: Plan generation failed: {e}")
+            return {
+                "plan": [
+                    {
+                        "step_number": 1,
+                        "type": "table",
+                        "description": "Answer the user's query",
+                        "depends_on": []
+                    }
+                ],
+                "reasoning": "Fallback to simple single-step execution due to planning error."
+            }
+    
+
+    def _generate_step_code(self, user_query, step: Dict[str, Any], prev_results: List[Dict[str, Any]]):
+        prev_summary = []
+
+        for i, res in enumerate(prev_results):
+            if res["type"] == "table":
+                prev_summary.append(f"Step {i}: Returned table with {res.get('total_rows', 0)} rows")
+            elif res["type"] == "image":
+                prev_summary.append(f"Step {i}: Created chart - {res.get('description', '')}")
+            elif res["type"] == "text":
+                prev_summary.append(f"Step {i}: {res['data'][:100]}")
         
-        print("DEBUG: Generating Python code...")
-        
+
+        prev_context = "\n".join(prev_summary) if prev_summary else "this is the first step."
+
+        messages = [
+            {
+                'role': 'system',
+                 "content": STEP_EXECUTOR_PROMPT.format(
+                    step_number=step["step_number"],
+                    schema=self.schema,
+                    query=user_query,
+                    step_type=step["type"],
+                    step_description=step["description"],
+                    previous_results=prev_context
+                )
+            }
+        ]
+
         try:
             code = self._call_llm(messages, temperature=0.0, timeout=60)
             return code
         except Exception as e:
-            print(f"DEBUG: Code generation failed: {e}")
-            return f"result = 'Code Generation Error: {str(e)}'"
-        
+            print(f"DEBUG: Step code generation failed for step {step['step_number']}: {e}")
+            return f"result = 'Code generation failed for step {step['step_number']}: {str(e)}'"
+     
     def _sanitize_code(self, code_string: str) -> str:
         """Extract and validate Python code, checking for security violations"""
         # Remove markdown code blocks if present
@@ -243,28 +306,27 @@ class DataAgent:
                 "data": f"Execution Error: {str(e)}"
             }
 
-    def _format_response(self, user_query: str, raw_result: any) -> str:
+    def _format_final_response(self, user_query: str, all_results: List[Dict[str, Any]]) -> str:
         """Convert technical result into natural language response"""
-        # Handle different result types for summary
-        if isinstance(raw_result, dict):
-            if raw_result.get("type") == "error":
-                return f"I encountered an error: {raw_result.get('data', 'Unknown error')}"
-            elif raw_result.get("type") == "image":
-                data_summary = f"Generated chart: {raw_result.get('description', 'Visualization')}"
-            elif raw_result.get("type") == "table":
-                row_count = raw_result.get("total_rows", len(raw_result.get("data", [])))
-                data_summary = f"Query returned {row_count} rows with columns: {', '.join(raw_result.get('columns', []))}"
-            else:
-                data_summary = str(raw_result.get("data", ""))
-        else:
-            data_summary = str(raw_result)
-        
+
+
+        summary_parts = []
+        for i, result in enumerate(all_results, 1):
+            if result["type"] == "table":
+                summary_parts.append(f"Step {i}: Displayed {result.get('total_rows', 0)} rows of data")
+            elif result["type"] == "image":
+                summary_parts.append(f"Step {i}: Created visualization - {result.get('description', '')}")
+            elif result["type"] == "text":
+                summary_parts.append(f"Step {i}: {result['data'][:100]}")
+
+        combined_summary = "\n".join(summary_parts)
+
         messages = [
             {
                 "role": "system",
                 "content": ANALYSIS_FORMAT_PROMPT.format(
-                    query=user_query,
-                    result=data_summary
+                    user_query=user_query,
+                    combined_summary=combined_summary,
                 )
             }
         ]
@@ -275,7 +337,7 @@ class DataAgent:
         except Exception as e:
             print(f"FORMAT ERROR: {e}")
             # Fallback to simple response
-            return f"Analysis complete. {data_summary}"
+            return f"Analysis complete. {combined_summary}"
 
     def answer(self, user_query: str, history_str: str = "") -> dict:
         """Main method to process user query and return formatted response"""
@@ -294,47 +356,63 @@ class DataAgent:
                 "result": {"type": "text", "data": "Request rejected due to inappropriate content."}
             }
         
-        raw_code = self._generate_python_code(user_query, history_str)
+        plan = self._generate_plan(user_query, history_str)
 
-        try:
-            clean_code = self._sanitize_code(raw_code)
-        except Exception as e:
+        if not plan:
+            print("DEBUG: No plan generated.")
             return {
-                "text": f"Security Error: {str(e)}",
-                "result": {"type": "error", "data": str(e)}
+                "text": "Sorry, I couldn't generate a plan to answer your question. Please try rephrasing your query.",
+                "result": {"type": "text", "data": "Plan generation failed."}
             }
         
-        # Debug output
-        print("DEBUG: Generated Code:")
-        print(clean_code)
-        print("=" * 80)
-        
-        execution_result = self._execute_code(clean_code)
+        if "plan" not in plan:
+            print(f"DEBUG: Plan missing 'plan' key: {plan}")
+            return {
+                "text": "Sorry, I couldn't generate a valid plan to answer your question. Please try rephrasing your query.",
+                "result": {"type": "text", "data": "Invalid plan structure."}
+            }
 
-        print("=" * 80)
-        print("DEBUG: Execution Result:")
-        print(execution_result)
-        print("=" * 80)
-        
-        if execution_result["type"] == "error":
-            summary = f"I encountered an error while processing your request: {execution_result['data']}"
-        elif execution_result["type"] == "table":
-            # WARNING: Add Option later for user if he wants to send data to llm or not
-            if True:
-                summary = self._format_response(user_query, execution_result['data'])
-            else:
-                # just use first generated description if user doesn't want to send data to llm
-                summary = execution_result['description'] 
-        elif execution_result["type"] == "image":
-            summary = self._format_response(user_query, f"I've created a visualization for you: {execution_result.get('description', '')}")
-        else:
-            summary = self._format_response(user_query, execution_result["data"])
-        
+        all_results = []
+        all_code = []
+
+        for step in plan["plan"]:
+            print("="*80)
+            print(f"EXECUTING STEP {step['step_number']}: {step['description']}")
+            print("="*80)
+
+            raw_code = self._generate_step_code(user_query, step, all_results)
+
+            try:
+                clean_code = self._sanitize_code(raw_code)
+            except Exception as e:
+                all_results.append({
+                    "type": "error",
+                    "data": f"Security error in step {step['step_number']}: {str(e)}",
+                    "step_number": step["step_number"],
+                    "step_description": step["description"]
+                })
+                all_code.append(f"# Step {step['step_number']} - SECURITY ERROR")
+                continue
+            
+            print(f"DEBUG: Step {step['step_number']} Code:")
+            print(clean_code)
+            
+            exec_result = self._execute_code(clean_code)
+            exec_result['step_number'] = step["step_number"]
+            exec_result['step_description'] = step["description"]
+            exec_result['step_type'] = step['type']
+
+            all_results.append(exec_result)
+
+        summary = self._format_final_response(user_query, all_results)
+
         return {
             "text": summary,
-            "result": execution_result,
-            "python": clean_code
+            "steps": all_results,
+            "plan": plan,
+            "code": "#########\n\n".join(all_code)
         }
+            
 
     def _calculate_stats(self) -> str:
         """Run tactical scan of dataframe to extract key metrics"""

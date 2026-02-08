@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ChatType, Dossier, Message } from '../types';
@@ -34,7 +34,6 @@ export const DashboardPage: React.FC = () => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Scroll Logic
     useEffect(() => {
         if (!scrollRef.current) return;
         if (messages.length > 0) {
@@ -62,9 +61,7 @@ export const DashboardPage: React.FC = () => {
     const handleDeleteChat = useCallback(async (chatId: string) => {
         try {
             await chatService.deleteChat(chatId);
-            
             setUserChats(prev => prev.filter(chat => chat.id !== chatId));
-            
             if (activeChatId === chatId) {
                 setSearchParams({});
             }
@@ -92,16 +89,28 @@ export const DashboardPage: React.FC = () => {
                 let content = m.content;
                 let tableData = null;
                 let imageData = null;
+                let steps = null;
+                let plan = null;
 
                 if (m.role === 'assistant') {
                     try {
                         const parsed = JSON.parse(m.content);
-                        if (parsed && typeof parsed === 'object' && parsed.text) {
-                            content = parsed.text;
-                            if (parsed.result?.type === 'table') {
-                                tableData = parsed.result.data;
-                            } else if (parsed.result?.type === 'image') {
-                                imageData = parsed.result.data;
+                        
+                        if (parsed && typeof parsed === 'object') {
+                            content = parsed.text || m.content;
+                            
+                            // Multi-step response
+                            if (parsed.steps && Array.isArray(parsed.steps)) {
+                                steps = parsed.steps;
+                                plan = parsed.plan;
+                            }
+                            // Single-step response (backward compatible)
+                            else if (parsed.result) {
+                                if (parsed.result.type === 'table') {
+                                    tableData = parsed.result.data;
+                                } else if (parsed.result.type === 'image') {
+                                    imageData = parsed.result.data;
+                                }
                             }
                         }
                     } catch (_) {}
@@ -114,6 +123,8 @@ export const DashboardPage: React.FC = () => {
                     created_at: m.created_at,
                     tableData,
                     imageData,
+                    steps,
+                    plan,
                     related_code: m.related_code
                 } as Message;
             });
@@ -121,8 +132,11 @@ export const DashboardPage: React.FC = () => {
             setMessages(mapped);
 
         } catch (error: any) {
-            console.error('Failed to load chat history:', error);
-            setMessages([{ role: 'assistant', content: '**Failed to load history.**\n\nPlease try again.' }]);
+            setActiveChatId(null);
+            setView('home');
+            setMessages([]);
+            setCurrentDossier(null);
+            setSearchParams({});
         } finally {
             setLoadingChatHistory(false);
         }
@@ -132,18 +146,14 @@ export const DashboardPage: React.FC = () => {
         setSearchParams({ chatId: id });
     }, [setSearchParams]);
 
-    // Robust URL Syncing ---
     useEffect(() => {
         const chatIdFromUrl = searchParams.get('chatId');
 
         if (chatIdFromUrl) {
-            // If URL has ID, fetch data (only if different)
             if (chatIdFromUrl !== activeChatId) {
                 fetchChatData(chatIdFromUrl);
             }
         } else {
-            // If URL is empty, BUT we still have an active chat in state,
-            // it means we just deleted it or navigated back. Reset to Home.
             if (activeChatId) {
                 setActiveChatId(null);
                 setMessages([]);
@@ -152,7 +162,6 @@ export const DashboardPage: React.FC = () => {
             }
         }
     }, [searchParams.get('chatId'), activeChatId]);
-
 
     const processMessage = useCallback(async (text: string) => {
         if (!text.trim() || !activeChatId) return;
@@ -175,8 +184,10 @@ export const DashboardPage: React.FC = () => {
             const content_obj = JSON.parse(res.content);
 
             const assistantMsg: Message = {
-                ...res, 
-                content: content_obj.text, 
+                ...res,
+                content: content_obj.text,
+                steps: content_obj.steps || null,
+                plan: content_obj.plan || null,
                 tableData: content_obj.result?.type === 'table' ? content_obj.result.data : null,
                 imageData: content_obj.result?.type === 'image' ? content_obj.result.data : null
             };

@@ -58,3 +58,6 @@ ADD COLUMN dossier_id UUID REFERENCES dossiers(id) ON DELETE SET NULL;
 
 ALTER TABLE messages 
 ADD COLUMN related_code JSONB;
+
+ALTER TABLE messages 
+ADD COLUMN steps JSONB;

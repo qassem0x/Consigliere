@@ -62,6 +62,13 @@ export const Sidebar: React.FC<SidebarProps> = memo(({
                         <span className="text-[9px] bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-white/5">{userChats.length}</span>
                     </div>
                 )}
+                {userChats.length === 0 && (
+                    <div className="flex flex-col items-center gap-2 mt-10">
+                        <Activity size={20} className="text-emerald-500 animate-pulse" />
+                        {isSidebarOpen && <span className="text-sm text-slate-500 p-4">Create your first operation.</span>}
+                    </div>
+                )}
+
                 {userChats.map(item => (
                     isSidebarOpen ? 
                         <SidebarItem 

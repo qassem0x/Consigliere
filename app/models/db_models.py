@@ -69,6 +69,7 @@ class Message(Base):
     artifacts = Column(JSONB)  
     # Stores { "type": "python", "code": "..." }
     related_code = Column(JSONB)
+    steps = Column(JSONB)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     chat = relationship("Chat", back_populates="messages")

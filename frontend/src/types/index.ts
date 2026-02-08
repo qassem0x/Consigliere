@@ -4,52 +4,56 @@ export interface Message {
     content: string;
     created_at?: string;
     
+    // Single-step (legacy)
     tableData?: any[];
     imageData?: string;
+    
+    // Multi-step (new)
+    steps?: StepResult[];
+    plan?: ExecutionPlan;
     
     related_code?: {
         type: string;
         code: string;
-    } | null;
-}
-export interface ExcelData {
-  fileName: string;
-  sheets: {
-    name: string;
-    data: any[];
-    headers: string[];
-  }[];
+        steps?: number;
+    };
 }
 
-export interface AnalysisState {
-  isAnalyzing: boolean;
-  result: string | null;
-  error: string | null;
+export interface StepResult {
+    step_number: number;
+    step_description: string;
+    step_type: 'chart' | 'table' | 'metric' | 'summary';
+    type: 'image' | 'table' | 'text' | 'error';
+    data: any;
+    description?: string;
+    columns?: string[];
+    total_rows?: number;
+    mime?: string;
+}
+
+export interface ExecutionPlan {
+    plan: Array<{
+        step_number: number;
+        type: string;
+        description: string;
+        depends_on: number[];
+    }>;
+    reasoning: string;
 }
 
 export interface ChatType {
-    id: string
-    title: string | null
-    file_id: string
-    created_at: string
-    type: string
+    id: string;
+    title: string;
+    created_at: string;
+    file: {
+        file_path: string;
+        original_name: string;
+    };
 }
 
 export interface Dossier {
-  file_type: string;
-  briefing: string;
-  key_entities: string[];
-  recommended_actions: string[];
-}
-
-export interface FileUploadResult {
-  status: string;
-  file_id: string;
-  filename: string;
-}
-
-export interface AnalysisResult {
-  status: string;
-  chat_id: string;
-  dossier: Dossier;
+    file_type: string;
+    briefing: string;
+    key_entities: string[];
+    recommended_actions: string[];
 }
