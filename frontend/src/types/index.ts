@@ -1,24 +1,3 @@
-export interface Message {
-    id?: string;
-    role: 'user' | 'assistant';
-    content: string;
-    created_at?: string;
-    
-    // Single-step (legacy)
-    tableData?: any[];
-    imageData?: string;
-    
-    // Multi-step (new)
-    steps?: StepResult[];
-    plan?: ExecutionPlan;
-    
-    related_code?: {
-        type: string;
-        code: string;
-        steps?: number;
-    };
-}
-
 export interface StepResult {
     step_number: number;
     step_description: string;
@@ -56,4 +35,33 @@ export interface Dossier {
     briefing: string;
     key_entities: string[];
     recommended_actions: string[];
+}
+
+export interface Message {
+    id?: string;
+    role: 'user' | 'assistant';
+    content: string;
+    created_at?: string;
+    tableData?: any;
+    imageData?: any;
+    steps?: StepResult[];
+    plan?: any;
+    related_code?: {
+        type: string;
+        code: string;
+    } | null;
+    // New streaming status fields
+    streamingStatus?: 'planning' | 'executing' | 'complete' | 'error';
+    currentStep?: number;
+}
+
+export interface StepResult {
+    step_number: number;
+    step_description: string;
+    step_type: 'table' | 'chart' | 'image' | 'text' | 'metric' | 'error';
+    type: 'table' | 'image' | 'text' | 'error';
+    data: any;
+    columns?: string[];
+    total_rows?: number;
+    description?: string;
 }

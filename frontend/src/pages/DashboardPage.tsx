@@ -170,35 +170,131 @@ export const DashboardPage: React.FC = () => {
         setMessages(prev => [...prev, userMsg]);
         setIsLoading(true);
 
-        try {
-            const res = await chatService.sendMessage(activeChatId, text);
+        // Create a placeholder assistant message that will be updated with streaming data
+        const assistantMsgId = `temp-${Date.now()}`;
+        const assistantMsg: Message = {
+            id: assistantMsgId,
+            role: 'assistant',
+            content: '',
+            steps: [],
+            plan: null,
+            related_code: null
+        };
+        setMessages(prev => [...prev, assistantMsg]);
 
-            if (res.error) {
-                setMessages(prev => [...prev, {
-                    role: 'assistant',
-                    content: '**Error:** Failed to process command.'
-                }]);
-                return;
+        try {
+            const response = await fetch(`http://localhost:8000/messages/${activeChatId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ content: text })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to send message');
             }
 
-            const content_obj = JSON.parse(res.content);
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
 
-            const assistantMsg: Message = {
-                ...res,
-                content: content_obj.text,
-                steps: content_obj.steps || null,
-                plan: content_obj.plan || null,
-                tableData: content_obj.result?.type === 'table' ? content_obj.result.data : null,
-                imageData: content_obj.result?.type === 'image' ? content_obj.result.data : null
-            };
+            if (!reader) {
+                throw new Error('No response body');
+            }
 
-            setMessages(prev => [...prev, assistantMsg]);
+            let buffer = '';
+            let finalMessageId: string | null = null;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+
+                    try {
+                        const chunk = JSON.parse(line);
+
+                        if (chunk.type === 'step_start') {
+                            // Update message to show step is starting
+                            setMessages(prev => prev.map(msg => 
+                                msg.id === assistantMsgId 
+                                    ? {
+                                        ...msg,
+                                        content: msg.content || `${chunk.description}...`
+                                    }
+                                    : msg
+                            ));
+                        } 
+                        else if (chunk.type === 'step_result') {
+                            // Add completed step to the steps array
+                            setMessages(prev => prev.map(msg => 
+                                msg.id === assistantMsgId 
+                                    ? {
+                                        ...msg,
+                                        steps: [...(msg.steps || []), chunk.data]
+                                    }
+                                    : msg
+                            ));
+                        }
+                        else if (chunk.type === 'final_result') {
+                            // Update with final response
+                            setMessages(prev => prev.map(msg => 
+                                msg.id === assistantMsgId 
+                                    ? {
+                                        ...msg,
+                                        content: chunk.data.text,
+                                        steps: chunk.data.steps || [],
+                                        plan: chunk.data.plan || null,
+                                        related_code: chunk.data.code ? {
+                                            type: 'python',
+                                            code: chunk.data.code
+                                        } : null
+                                    }
+                                    : msg
+                            ));
+                        }
+                        else if (chunk.type === 'final') {
+                            // Backend has saved the message, update with real ID
+                            finalMessageId = chunk.message_id;
+                            setMessages(prev => prev.map(msg => 
+                                msg.id === assistantMsgId 
+                                    ? { ...msg, id: chunk.message_id }
+                                    : msg
+                            ));
+                        }
+                        else if (chunk.type === 'error') {
+                            setMessages(prev => prev.map(msg => 
+                                msg.id === assistantMsgId 
+                                    ? {
+                                        ...msg,
+                                        content: `**Error:** ${chunk.message}`
+                                    }
+                                    : msg
+                            ));
+                        }
+                    } catch (parseError) {
+                        console.error('Failed to parse chunk:', line, parseError);
+                    }
+                }
+            }
+
         } catch (error) {
             console.error("Message processing failed:", error);
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: '**Critical Error:** System failed to parse response.'
-            }]);
+            setMessages(prev => prev.map(msg => 
+                msg.id === assistantMsgId 
+                    ? {
+                        ...msg,
+                        content: '**Critical Error:** System failed to process request.'
+                    }
+                    : msg
+            ));
         } finally {
             setIsLoading(false);
         }

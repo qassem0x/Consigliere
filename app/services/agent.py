@@ -338,82 +338,103 @@ class DataAgent:
             print(f"FORMAT ERROR: {e}")
             # Fallback to simple response
             return f"Analysis complete. {combined_summary}"
-
-    def answer(self, user_query: str, history_str: str = "") -> dict:
-        """Main method to process user query and return formatted response"""
+    def answer(self, user_query: str, history_str: str = ""): # Removed -> dict type hint
         
         intent = self._decide_intent(user_query, history_str)
-        
+
         if intent == "GENERAL_CHAT":
-            return {
-                "text": "I'm Consigliere, your AI data analyst. I can help you analyze your data by running queries, creating visualizations, and generating insights. What would you like to know about your dataset?",
-                "result": {"type": "text", "data": "General conversation - no data analysis performed."}
-            }
+            yield json.dumps({
+                "type": "final_result",
+                "data": {
+                    "text": "I'm Consigliere, your AI data analyst. I can help you analyze your data by running queries, creating visualizations, and generating insights. What would you like to know about your dataset?",
+                    "steps": [],
+                    "code": None
+                }
+            })
+            return 
         
         if intent == "OFFENSIVE":
-            return {
-                "text": "I'm here to help with data analysis. Please keep our conversation professional and focused on your data needs.",
-                "result": {"type": "text", "data": "Request rejected due to inappropriate content."}
-            }
+            yield json.dumps({
+                "type": "final_result",
+                "data": {
+                    "text": "I'm here to help with data analysis. Please keep our conversation professional and focused on your data needs.",
+                    "steps": [],
+                    "code": None
+                }
+            })
+            return 
+        
+        
+        # NOTE: It's better to yield standard JSON strings if your endpoint expects ndjson
+        yield json.dumps({"type": "step_start", "step_number": 0, "description": "Planning analysis steps..."})
         
         plan = self._generate_plan(user_query, history_str)
 
-        if not plan:
-            print("DEBUG: No plan generated.")
-            return {
-                "text": "Sorry, I couldn't generate a plan to answer your question. Please try rephrasing your query.",
-                "result": {"type": "text", "data": "Plan generation failed."}
-            }
-        
-        if "plan" not in plan:
-            print(f"DEBUG: Plan missing 'plan' key: {plan}")
-            return {
-                "text": "Sorry, I couldn't generate a valid plan to answer your question. Please try rephrasing your query.",
-                "result": {"type": "text", "data": "Invalid plan structure."}
-            }
+        if not plan or "plan" not in plan:
+            yield json.dumps({
+                "type": "final_result",
+                "data": {
+                    "text": "Sorry, I couldn't generate a valid plan. Please try rephrasing.",
+                    "steps": [],
+                    "code": None
+                }
+            })
+            return
 
         all_results = []
         all_code = []
 
         for step in plan["plan"]:
-            print("="*80)
-            print(f"EXECUTING STEP {step['step_number']}: {step['description']}")
-            print("="*80)
+            yield json.dumps({
+                "type": "step_start", 
+                "step_number": step['step_number'], 
+                "description": step['description'],
+                "step_type": step['type']
+            })
 
             raw_code = self._generate_step_code(user_query, step, all_results)
-
+            
             try:
                 clean_code = self._sanitize_code(raw_code)
+                all_code.append(clean_code)
             except Exception as e:
-                all_results.append({
-                    "type": "error",
-                    "data": f"Security error in step {step['step_number']}: {str(e)}",
-                    "step_number": step["step_number"],
-                    "step_description": step["description"]
+                # Handle Security Error
+                yield json.dumps({
+                    "type": "step_result",
+                    "data": {
+                        "step_number": step["step_number"],
+                        "type": "error",
+                        "data": f"Security Error: {str(e)}"
+                    }
                 })
-                all_code.append(f"# Step {step['step_number']} - SECURITY ERROR")
                 continue
             
-            print(f"DEBUG: Step {step['step_number']} Code:")
-            print(clean_code)
-            
             exec_result = self._execute_code(clean_code)
+            
             exec_result['step_number'] = step["step_number"]
             exec_result['step_description'] = step["description"]
             exec_result['step_type'] = step['type']
 
             all_results.append(exec_result)
 
+            yield json.dumps({
+                "type": "step_result", 
+                "data": exec_result
+            })
+
         summary = self._format_final_response(user_query, all_results)
 
-        return {
-            "text": summary,
-            "steps": all_results,
-            "plan": plan,
-            "code": "#########\n\n".join(all_code)
-        }
-            
+        yield json.dumps({
+            "type": "final_result",
+            "data": {
+                "text": summary,
+                "steps": all_results,
+                "plan": plan,
+                "code": f"\n\n#############\n\n".join(all_code)
+            }
+        })
 
+    
     def _calculate_stats(self) -> str:
         """Run tactical scan of dataframe to extract key metrics"""
         stats = []

@@ -1,7 +1,7 @@
 import React, { useState, memo } from 'react';
 import { 
     Rose, User, Code2, Copy, Check, BarChart3, Table2, 
-    FileText, AlertCircle, TrendingUp, Activity, Layers, Terminal
+    FileText, AlertCircle, TrendingUp, Activity, Layers, Terminal, Loader2, CheckCircle2, Zap
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Message, StepResult } from '../../types';
@@ -11,6 +11,54 @@ interface MessageBubbleProps {
     msg: Message;
     idx: number;
 }
+
+const StreamingStatusIndicator: React.FC<{ status?: string; currentStep?: number }> = memo(({ status, currentStep }) => {
+    if (!status || status === 'complete') return null;
+
+    return (
+        <div className="flex items-center gap-3 mb-4 px-4 py-3 bg-gradient-to-r from-rose-500/10 to-transparent border border-rose-500/20 rounded-lg animate-pulse">
+            {status === 'planning' && (
+                <>
+                    <Loader2 size={16} className="text-rose-400 animate-spin" />
+                    <div className="flex flex-col">
+                        <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">
+                            Planning Analysis
+                        </span>
+                        <span className="text-[10px] text-slate-500 mt-0.5">
+                            Breaking down your query into actionable steps...
+                        </span>
+                    </div>
+                </>
+            )}
+            {status === 'executing' && (
+                <>
+                    <Zap size={16} className="text-amber-400 animate-pulse" />
+                    <div className="flex flex-col">
+                        <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                            {currentStep}
+                        </span>
+                        <span className="text-[10px] text-slate-500 mt-0.5">
+                            Processing data and generating results...
+                        </span>
+                    </div>
+                </>
+            )}
+            {status === 'error' && (
+                <>
+                    <AlertCircle size={16} className="text-red-400" />
+                    <div className="flex flex-col">
+                        <span className="text-xs font-bold text-red-400 uppercase tracking-wider">
+                            Error Occurred
+                        </span>
+                        <span className="text-[10px] text-slate-500 mt-0.5">
+                            Something went wrong during execution
+                        </span>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+});
 
 const TacticalCodeBlock: React.FC<{ code: string; type: string }> = memo(({ code, type }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -177,6 +225,7 @@ const ImageGridStep: React.FC<{ steps: StepResult[]; isLast: boolean }> = memo((
 export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx }) => {
     const isAssistant = msg.role === 'assistant';
     const hasSteps = msg.steps && msg.steps.length > 0;
+    const isStreaming = msg.streamingStatus && msg.streamingStatus !== 'complete';
 
     const renderSteps = () => {
         if (!msg.steps) return null;
@@ -227,6 +276,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx }) =
             </div>
 
             <div className={`flex flex-col relative max-w-[95%] ${isAssistant ? 'items-start' : 'items-end'}`}>
+                
+                {/* Streaming status indicator */}
+                {isAssistant && isStreaming && (
+                    <StreamingStatusIndicator status={msg.streamingStatus} currentStep={msg.currentStep} />
+                )}
                 
                 <div className={`
                     px-5 py-4 rounded-2xl text-sm leading-6 shadow-2xl backdrop-blur-md border w-full

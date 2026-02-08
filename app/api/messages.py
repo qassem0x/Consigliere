@@ -1,7 +1,9 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from uuid import UUID
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.core.deps import get_current_user
 from app.models.db_models import User, Chat, Message
 from app.models.messages import MessageCreate, MessageOut
@@ -25,7 +27,7 @@ def get_chat_history(
 
 
 @router.post("/messages/{chat_id}", response_model=MessageOut)
-def send_message(
+async def send_message(
     chat_id: UUID,
     msg_data: MessageCreate,
     db: Session = Depends(get_db),
@@ -65,28 +67,60 @@ def send_message(
         raise HTTPException(status_code=404, detail="Data file not found on server.")
 
     agent = DataAgent(path)
-    
-    answer = agent.answer(msg_data.content, history_str)
-    
-    code_obj = None
-    if "steps" in answer and isinstance(answer.get("steps"), list):
-        if answer.get("code"):
-            code_obj = {
-                "type": "python",
-                "code": answer.get("code", ""),
+
+    async def _event_generator():
+        final_response = {
+            "text": "",
+            "steps": [],
+            "code": None
         }
 
+        try:
+            for chunk in agent.answer(msg_data.content, history_str):
+                yield chunk + "\n"
 
-    assistant_msg = Message(
-        chat_id=chat_id,
-        role="assistant",
-        content=json.dumps(answer),
-        related_code=code_obj,
-        steps=answer.get("steps", [])
-    )
+                try:
+                    chunk_data = json.loads(chunk)
+                    final_response['text'] = chunk_data['data'].get('text', "")
+                    final_response['steps'] = chunk_data['data'].get('steps', [])
+                    final_response['code'] = chunk_data['data'].get('code', None)
 
-    db.add(assistant_msg)
-    db.commit()
-    db.refresh(assistant_msg)
+                except:
+                    pass
+
+                # Tiny sleep to ensure the loop yields control
+                await asyncio.sleep(0.01)
+
+            with SessionLocal() as db_session:
+                assistant_msg = Message(
+                    chat_id=chat_id,
+                    role="assistant",
+                    content=json.dumps({
+                        "text": final_response['text'],
+                        "steps": final_response['steps'],
+                        "code": final_response['code']
+                    }),
+                    related_code={
+                        "type": "python",
+                        "code":final_response['code']
+                    },
+                    steps=final_response['steps']
+                )
+                db_session.add(assistant_msg)
+                db_session.commit()
+                db_session.refresh(assistant_msg)
+
+                yield json.dumps({
+                    "type": "final",
+                    "message_id": assistant_msg.id
+                })
+
+        except Exception as e:
+            yield json.dumps({
+                "type": "error",
+                "message": str(e)
+            })
     
-    return assistant_msg
+    return StreamingResponse(_event_generator(), media_type="application/x-ndjson")
+
+    
