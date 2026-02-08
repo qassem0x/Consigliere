@@ -13,7 +13,7 @@ interface MessageBubbleProps {
 }
 
 const StreamingStatusIndicator: React.FC<{ status?: string; currentStep?: number }> = memo(({ status, currentStep }) => {
-    if (!status || status === 'complete') return null;
+    // if (!status || status === 'complete') return null;
 
     return (
         <div className="flex items-center gap-3 mb-4 px-4 py-3 bg-gradient-to-r from-rose-500/10 to-transparent border border-rose-500/20 rounded-lg animate-pulse">

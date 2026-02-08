@@ -28,8 +28,21 @@ class DataAgent:
         self.cache_manager = DataCache()
         self.df = self.cache_manager.get_data(file_path)
         
-        # TODO: Make the schema smarter to have physical types and logical types, and sample values for categorical columns
-        self.schema = "\n".join([f"- {col}: {dtype}" for col, dtype in self.df.dtypes.items()])
+        # Smart Schema
+        schema_parts = []
+        for col in self.df.columns:
+            dtype = self.df[col].dtype
+            if pd.api.types.is_numeric_dtype(dtype):
+                sample = f"Range: {self.df[col].min()} to {self.df[col].max()}"
+            else:
+                if self.df[col].nunique() < 20:
+                    top_vals = self.df[col].unique()[:5].tolist()
+                    sample = f"Sample: {top_vals}"
+                else:
+                    sample = f"Unique Values: {self.df[col].nunique()} from {len(self.df)} records"
+            schema_parts.append(f"- {col} ({dtype}): {sample}")
+
+        self.schema = "\n".join(schema_parts)
         self.model_name = MODEL_NAME
 
     @retry(

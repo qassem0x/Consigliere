@@ -201,65 +201,73 @@ OUTPUT FORMAT (STRICT JSON):
 }}
 """
 
-PLANNER_PROMPT = """You are a Content Architect. Your ONLY job is to bundle multiple visible outputs into a single response.
 
-You do NOT plan "thinking," "strategy," or "analysis" steps. 
-You ONLY plan "Display" steps. Every step you list must result in a visible element (Chart, Table, or Metric) for the user.
+PLANNER_PROMPT = """You are a Data Analysis Logic Engine. Your job is to map user queries to exact visualization steps.
 
-Available columns:
+### 1. ANALYZE THE SCHEMA
+Available Columns:
 {schema}
 
-User query: {query}
-History: {history}
+### 2. NOTES:
+ - Each step must be a clear, non redundant instruction that have meaning to the use and related to his question and executable with pandas/matplotlib.
+ - Avoid vague steps like "analyze by region". Be specific: "Create a bar chart of total sales by region. X=Region, Y=Total Sales".
+ - For tables, specify the exact columns, filters, and sorting. E.g., "Show Region, Total Sales, and Average Price for products in the 'Electronics' category, sorted by Total Sales descending."
 
-YOUR RULES:
-1. **No Internal Logic:** Never create steps like "Analyze data," "Determine trend," or "Filter dataset." Those are implicit.
-2. **Visuals Only:** Each step must be a concrete request to SHOW something.
-3. **Multi-Modal:** If the user asks a complex question, split the answer into multiple display parts (e.g., "Show a Chart AND a Table").
 
-VALID STEP TYPES:
-- "chart": "I want to display a visual plot."
-- "table": "I want to display a list of rows."
-- "metric": "I want to display a single big number/KPI."
-- "summary": "I want to display a text explanation."
+### 3. ANALYZE THE INTENT (The "Cheat Sheet")
+Check what the user *really* wants and select the best view:
+- **Comparison** (e.g., "Best selling products", "Survival by Class"):
+  -> Use 'bar_chart'. Focus on categorical grouping.
+- **Trend/Time** (e.g., "Sales over time", "Ages trend"):
+  -> Use 'line_chart'. Must have a Date or Number on X-axis.
+- **Distribution** (e.g., "Spread of ticket prices", "Age groups"):
+  -> Use 'histogram' or 'box_plot'.
+- **Relationship** (e.g., "Do rich people survive more?", "Age vs Fare"):
+  -> Use 'scatter_plot'. Needs 2 numeric columns.
+- **Summary** (e.g., "Tell me about the data"):
+  -> Use 'metric' for KPIs + 'text_summary'.
 
-OUTPUT FORMAT (STRICT JSON):
+### 3. FORMULATE THE PLAN
+Create a step-by-step execution plan.
+- **Rule 1:** Start with the "Big Picture" (Metrics or Chart).
+- **Rule 2:** Follow with "Proof" (Table).
+- **Rule 3:** End with "Insight" (Summary).
+- **Rule 4:** NEVER create a table without the grouping column (e.g., if analyzing 'Sex', the table MUST include 'Sex').
+
+### OUTPUT FORMAT (STRICT JSON ONLY):
 {{
-  "plan": [
-    {{
-      "step_number": 1,
-      "type": "chart|table|metric|summary",
-      "description": "Display [specific content] to the user",
-      "depends_on": [] 
-    }}
-  ],
-  "reasoning": "I will display X, Y, and Z to answer the query."
-}}
-
-Example: "How are sales doing?"
-{{
+  "intent_analysis": "User wants a [Comparison/Trend] of [Target Column] grouped by [Group Column].",
+  "recommended_visualization": "bar_chart",
   "plan": [
     {{
       "step_number": 1,
       "type": "metric",
-      "description": "Display total revenue KPI",
+      "description": "Calculate global Average Survival Rate (round to 2 decimals)",
       "depends_on": []
     }},
     {{
       "step_number": 2,
       "type": "chart",
-      "description": "Display monthly sales trend line chart",
+      "description": "Create Bar Chart of Survival Rate by Pclass. X=Pclass, Y=Survival Rate",
       "depends_on": []
     }},
     {{
       "step_number": 3,
       "type": "table",
-      "description": "Display top 5 performing regions",
+      "description": "Show Pclass, Count, and Avg Survival Rate. Sort by Avg Survival Rate descending.",
       "depends_on": []
     }}
-  ],
-  "reasoning": "I am showing the total (metric), the trend (chart), and the breakdown (table) in one message."
-}}"""
+  ]
+}}
+
+### USER QUERY:
+{query}
+
+### CONVERSATION HISTORY:
+{history}
+
+Generate the JSON plan now:
+"""
 
 STEP_EXECUTOR_PROMPT = """You are executing step {step_number} of a multi-step analysis plan.
 
