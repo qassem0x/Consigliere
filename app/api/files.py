@@ -95,7 +95,6 @@ def analyze_file(
 
     new_dossier = Dossier(
         file_id=db_file.id,
-        file_type=dossier_data.get("file_type", "Unknown"),
         briefing=dossier_data.get("briefing", "No briefing generated."),
         key_entities=dossier_data.get("key_entities", []),
         recommended_actions=dossier_data.get("recommended_actions", []),

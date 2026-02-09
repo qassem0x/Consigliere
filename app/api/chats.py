@@ -47,10 +47,25 @@ def get_my_chats(
         .all()
     )
 
+    result = []
     for chat in chats:
-        chat.type = "excel"
-        chat.title = chat.file.filename
-    return chats
+        chat_data = {
+            "id": chat.id,
+            "title": chat.title
+            or (chat.file.filename if chat.file else "Untitled Chat"),
+            "file_id": chat.file_id,
+            "connection_id": chat.connection_id,
+            "created_at": chat.created_at,
+            "type": "excel" if chat.file else "connection",
+            "file": (
+                {"file_path": chat.file.file_path, "filename": chat.file.filename}
+                if chat.file
+                else None
+            ),
+        }
+        result.append(chat_data)
+
+    return result
 
 
 @router.get("/chats/{chat_id}/dossier")
@@ -72,7 +87,6 @@ def get_chat_dossier(
         raise HTTPException(status_code=404, detail="Dossier not found for this chat")
 
     return {
-        "file_type": dossier.file_type,
         "created_at": dossier.created_at,
         "briefing": dossier.briefing,
         "key_entities": dossier.key_entities,

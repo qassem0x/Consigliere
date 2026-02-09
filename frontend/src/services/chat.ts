@@ -1,4 +1,4 @@
-import { api } from '../utils/api';
+import { api, fetchStream } from '../utils/api';
 
 export const chatService = {
   loadUserChats: async () => {
@@ -13,8 +13,11 @@ export const chatService = {
     const response = await api.post(`/messages/${chatId}`, { content });
     return response.data;
   },
+  sendMessageStream: async (chatId: string, content: string) => {
+    return await fetchStream(`/messages/${chatId}`, { content });
+  },
   async deleteChat(chatId: string) {
     const res = await api.delete(`/chats/${chatId}`);
     return true;
-}
+  }
 };

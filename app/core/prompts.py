@@ -183,6 +183,7 @@ INTELLIGENCE DATA:
 1. SCHEMA: {schema}
 2. TACTICAL SCAN: {stats}
 3. PREVIEW: {preview}
+4. This data is from a {source_type} so focus on operational and strategic insights relevant to that context.
 
 INSTRUCTIONS:
 1. **Analyze:** Identify the Industry/Domain and Operational Context.
@@ -190,7 +191,6 @@ INSTRUCTIONS:
 
 OUTPUT FORMAT (STRICT JSON):
 {{
-  "file_type": "Tactical Label (e.g., 'Q4 Sales Ledger')",
   "briefing": "## 1. Executive Summary (BLUF)\\n* **Dataset Scope:** [Row Count] records spanning [Date Range].\\n* **Primary Domain:** [Industry/Field].\\n* **Core Value:** [One sentence on why this data matters].\\n\\n## 2. Operational Intelligence\\n* **Workflow:** This file tracks [Process X] moving through [Stages Y].\\n* **Key Entities:** Detected high activity in [Top Entity 1] and [Top Entity 2].\\n\\n## 3. Strategic Assessment\\n* **Strengths:** [Point 1].\\n* **Limitations:** [Point 2 (e.g., missing dates, messy text)].",
   "key_entities": ["List", "Of", "5-7", "Critical", "Columns"],
   "recommended_actions": [
@@ -293,7 +293,10 @@ Generate Python code that:
 5. For metrics: returns a number, string, or dict
 6. For summaries: returns a descriptive string
 
+CRITICAL NOTE: if use mentions a column first re-check the scheme to check if exists NOTE: make sure to check for semantic matches if the column doesn't exist and if no match is found return a message that the column is not found and list the available columns
+
 Important:
+- ONLY DO WHAT'S TOLD IN THE STEP AND DO VISUALIZATIONS WHEN ASKED TO ONLY
 - Assign a description string to 'description' variable explaining what the code does
 - Use only pandas (pd), matplotlib.pyplot (plt), and the dataframe 'df'
 - DO NOT use os, sys, subprocess, open(), exec(), eval(), or imports
@@ -301,3 +304,32 @@ Important:
 - Keep code concise and focused on this specific step
 
 Return ONLY the Python code, no explanations."""
+
+
+SQL_GENERATOR_PROMPT = """You are a High-Performance SQL Engine.
+Your goal is to convert natural language questions into efficient, executable SQL queries.
+
+### CONTEXT
+Target Database: **{target_db}** (Use strict syntax for this dialect)
+Schema:
+{schema}
+
+### USER REQUEST
+"{query}"
+
+### CRITICAL RULES
+1. **Read-Only:** You strictly generate `SELECT` queries. NEVER generate `INSERT`, `UPDATE`, `DELETE`, `DROP`, or `ALTER`.
+2. **Dialect Specifics:**
+   - If PostgreSQL: Use `"` for identifiers, `LIMIT` for limits, `::` for casting.
+   - If MySQL: Use ``` ` ``` for identifiers, `LIMIT` for limits.
+   - If SQL Server: Use `[]` for identifiers, `TOP` for limits.
+   - Provide sql code only with no explanations or markdown formatting like ```sql ```.
+3. **Date Handling:** ALWAYS cast string dates to the correct type (e.g., `CAST('2023-01-01' AS DATE)`).
+4. **Joins:** If the data spans multiple tables, identify the foreign keys in the schema and JOIN them explicitly.
+5. **Formatting:** Return **ONLY** the raw SQL string. Do not use Markdown (no ```sql ... ```). Do not write explanations.
+
+### ERROR HANDLING
+- If the user asks for a column that does not exist in the schema, try to find a semantic match (e.g., 'revenue' -> 'sales_amount').
+- If no match is found, return: `SELECT 'Error: Column not found'`.
+
+Generate the SQL now:"""

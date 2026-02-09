@@ -19,13 +19,14 @@ from app.core.prompts import (
     ROUTER_PROMPT,
     STEP_EXECUTOR_PROMPT,
 )
+from app.services.base_agent import BaseAgent
 from app.services.cache import DataCache
 from app.services.llm import call_llm
 
 dotenv.load_dotenv()
 
 
-class ExcelDataAgent:
+class ExcelDataAgent(BaseAgent):
     def __init__(self, file_path: str):
         self.cache_manager = DataCache()
         self.df = self.cache_manager.get_data(file_path)
@@ -45,34 +46,6 @@ class ExcelDataAgent:
             schema_parts.append(f"- {col} ({dtype}): {sample}")
 
         self.schema = "\n".join(schema_parts)
-
-    def _decide_intent(self, user_query: str, history_str: str = "") -> str:
-        """Route query to appropriate handler"""
-        messages = [
-            {
-                "role": "user",
-                "content": ROUTER_PROMPT.format(
-                    query=user_query,
-                    history=history_str if history_str else "No previous conversation.",
-                ),
-            }
-        ]
-
-        try:
-            text = call_llm(messages, temperature=0.0, timeout=30)
-
-            # Clean markdown code blocks if present
-            if "```" in text:
-                text = text.replace("```json", "").replace("```", "").strip()
-
-            parsed = json_repair.loads(text)
-            intent = parsed.get("intent", "DATA_ACTION")
-            print(f"DEBUG: Router decided intent = {intent}")
-            return intent
-
-        except Exception as e:
-            print(f"ROUTER ERROR: {e}")
-            return "DATA_ACTION"  # Fail-safe: assume data question
 
     def _generate_plan(self, user_query: str, history_str: str = ""):
         messages = [
@@ -432,6 +405,11 @@ class ExcelDataAgent:
             yield json.dumps({"type": "step_result", "data": exec_result})
 
         summary = self._format_final_response(user_query, all_results)
+        code = ""
+        for i, step in enumerate(plan["plan"]):
+            code += f"# Step {step['step_number']}: {step['description']}\n"
+            code += all_code[i] + "\n\n"
+            code += "=" * 50 + "\n\n"
 
         yield json.dumps(
             {
@@ -440,7 +418,7 @@ class ExcelDataAgent:
                     "text": summary,
                     "steps": all_results,
                     "plan": plan,
-                    "code": f"\n\n#############\n\n".join(all_code),
+                    "code": code,
                 },
             }
         )
@@ -487,13 +465,17 @@ class ExcelDataAgent:
     def generate_dossier(self) -> dict:
         """Generate initial briefing about the dataset"""
         stats_summary = self._calculate_stats()
+        # TODO: REPLACE THAT WITH DATA SHADOWING OF FIRST 5 ROWS
         preview = self.df.head(5).to_string()
 
         messages = [
             {
                 "role": "user",
                 "content": DOSSIER_PROMPT.format(
-                    schema=self.schema, preview=preview, stats=stats_summary
+                    schema=self.schema,
+                    preview=preview,
+                    stats=stats_summary,
+                    source_type="Excel spreadsheet",
                 ),
             }
         ]
@@ -515,7 +497,6 @@ class ExcelDataAgent:
             if isinstance(parsed_json, dict):
                 # Validate required fields
                 required_fields = [
-                    "file_type",
                     "briefing",
                     "key_entities",
                     "recommended_actions",
@@ -537,7 +518,6 @@ class ExcelDataAgent:
         except Exception as e:
             print(f"Error generating dossier: {e}")
             return {
-                "file_type": "Dataset",
                 "briefing": f"I analyzed your data ({len(self.df):,} rows, {len(self.df.columns)} columns) but couldn't generate a full briefing. I'm ready to answer your questions!",
                 "key_entities": list(self.df.columns[:5]),
                 "recommended_actions": [

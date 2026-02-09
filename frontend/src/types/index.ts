@@ -22,16 +22,18 @@ export interface ExecutionPlan {
 
 export interface ChatType {
     id: string;
-    title: string;
+    title: string | null;
     created_at: string;
-    file: {
+    file_id?: string | null;
+    connection_id?: string | null;
+    type?: string;
+    file?: {
         file_path: string;
-        original_name: string;
+        filename: string;
     };
 }
 
 export interface Dossier {
-    file_type: string;
     briefing: string;
     key_entities: string[];
     recommended_actions: string[];

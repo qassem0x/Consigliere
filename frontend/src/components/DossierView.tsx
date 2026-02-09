@@ -24,7 +24,7 @@ export const DossierView: React.FC<DossierViewProps> = ({ dossier, onActionClick
             </div>
             <div>
               <h3 className="text-lg font-bold text-white tracking-wide uppercase font-mono">
-                {dossier.file_type || 'Unknown Source'}
+                {'Unknown Source'}
               </h3>
               <p className="text-[10px] text-rose-400/80 font-mono uppercase tracking-widest mt-1">
                 Classified Intelligence Briefing

@@ -15,6 +15,7 @@ import { WizardModal } from '../components/dashboard/WizardModal';
 export const DashboardPage: React.FC = () => {
     const { logout } = useAuth();
 
+    // --- STATE MANAGEMENT ---
     const [view, setView] = useState<'home' | 'chat' | 'wizard'>('home');
     const [isSidebarOpen, setSidebarOpen] = useState(true);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -23,10 +24,13 @@ export const DashboardPage: React.FC = () => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [currentDossier, setCurrentDossier] = useState<Dossier | null>(null);
+    
+    // Tracks upload or connection progress
     const [uploadProgress, setUploadProgress] = useState<{
         phase: 'uploading' | 'analyzing' | null;
         fileName?: string;
     }>({ phase: null });
+    
     const [loadingChatHistory, setLoadingChatHistory] = useState(false);
 
     const [searchParams, setSearchParams] = useSearchParams();
@@ -34,6 +38,7 @@ export const DashboardPage: React.FC = () => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // --- SCROLL HANDLING ---
     useEffect(() => {
         if (!scrollRef.current) return;
         if (messages.length > 0) {
@@ -43,6 +48,7 @@ export const DashboardPage: React.FC = () => {
         }
     }, [messages]);
 
+    // --- DATA LOADING ---
     const loadUserChats = useCallback(async () => {
         try {
             const chats: ChatType[] = await chatService.loadUserChats();
@@ -85,6 +91,7 @@ export const DashboardPage: React.FC = () => {
 
             setCurrentDossier(dossier);
             
+            // Map backend messages to frontend format
             const mapped: Message[] = history.map((m: any) => {
                 let content = m.content;
                 let tableData = null;
@@ -142,6 +149,7 @@ export const DashboardPage: React.FC = () => {
         }
     }, []);
 
+    // --- URL SYNC ---
     const handleChatSelect = useCallback((id: string) => {
         setSearchParams({ chatId: id });
     }, [setSearchParams]);
@@ -161,8 +169,9 @@ export const DashboardPage: React.FC = () => {
                 setView('home');
             }
         }
-    }, [searchParams.get('chatId'), activeChatId]);
+    }, [searchParams.get('chatId'), activeChatId, fetchChatData]);
 
+    // --- MESSAGE PROCESSING (STREAMING) ---
     const processMessage = useCallback(async (text: string) => {
         if (!text.trim() || !activeChatId) return;
 
@@ -170,7 +179,6 @@ export const DashboardPage: React.FC = () => {
         setMessages(prev => [...prev, userMsg]);
         setIsLoading(true);
 
-        // Create a placeholder assistant message that will be updated with streaming data
         const assistantMsgId = `temp-${Date.now()}`;
         const assistantMsg: Message = {
             id: assistantMsgId,
@@ -192,23 +200,16 @@ export const DashboardPage: React.FC = () => {
                 body: JSON.stringify({ content: text })
             });
 
-            if (!response.ok) {
-                throw new Error('Failed to send message');
-            }
+            if (!response.ok) throw new Error('Failed to send message');
 
             const reader = response.body?.getReader();
             const decoder = new TextDecoder();
-
-            if (!reader) {
-                throw new Error('No response body');
-            }
+            if (!reader) throw new Error('No response body');
 
             let buffer = '';
-            let finalMessageId: string | null = null;
 
             while (true) {
                 const { done, value } = await reader.read();
-                
                 if (done) break;
 
                 buffer += decoder.decode(value, { stream: true });
@@ -222,29 +223,20 @@ export const DashboardPage: React.FC = () => {
                         const chunk = JSON.parse(line);
 
                         if (chunk.type === 'step_start') {
-                            // Update message to show step is starting
                             setMessages(prev => prev.map(msg => 
                                 msg.id === assistantMsgId 
-                                    ? {
-                                        ...msg,
-                                        content: msg.content || `${chunk.description}...`
-                                    }
+                                    ? { ...msg, content: msg.content || `${chunk.description}...` }
                                     : msg
                             ));
                         } 
                         else if (chunk.type === 'step_result') {
-                            // Add completed step to the steps array
                             setMessages(prev => prev.map(msg => 
                                 msg.id === assistantMsgId 
-                                    ? {
-                                        ...msg,
-                                        steps: [...(msg.steps || []), chunk.data]
-                                    }
+                                    ? { ...msg, steps: [...(msg.steps || []), chunk.data] }
                                     : msg
                             ));
                         }
                         else if (chunk.type === 'final_result') {
-                            // Update with final response
                             setMessages(prev => prev.map(msg => 
                                 msg.id === assistantMsgId 
                                     ? {
@@ -252,31 +244,19 @@ export const DashboardPage: React.FC = () => {
                                         content: chunk.data.text,
                                         steps: chunk.data.steps || [],
                                         plan: chunk.data.plan || null,
-                                        related_code: chunk.data.code ? {
-                                            type: 'python',
-                                            code: chunk.data.code
-                                        } : null
+                                        related_code: chunk.data.code ? { type: 'python', code: chunk.data.code } : null
                                     }
                                     : msg
                             ));
                         }
                         else if (chunk.type === 'final') {
-                            // Backend has saved the message, update with real ID
-                            finalMessageId = chunk.message_id;
                             setMessages(prev => prev.map(msg => 
-                                msg.id === assistantMsgId 
-                                    ? { ...msg, id: chunk.message_id }
-                                    : msg
+                                msg.id === assistantMsgId ? { ...msg, id: chunk.message_id } : msg
                             ));
                         }
                         else if (chunk.type === 'error') {
                             setMessages(prev => prev.map(msg => 
-                                msg.id === assistantMsgId 
-                                    ? {
-                                        ...msg,
-                                        content: `**Error:** ${chunk.message}`
-                                    }
-                                    : msg
+                                msg.id === assistantMsgId ? { ...msg, content: `**Error:** ${chunk.message}` } : msg
                             ));
                         }
                     } catch (parseError) {
@@ -284,16 +264,10 @@ export const DashboardPage: React.FC = () => {
                     }
                 }
             }
-
         } catch (error) {
             console.error("Message processing failed:", error);
             setMessages(prev => prev.map(msg => 
-                msg.id === assistantMsgId 
-                    ? {
-                        ...msg,
-                        content: '**Critical Error:** System failed to process request.'
-                    }
-                    : msg
+                msg.id === assistantMsgId ? { ...msg, content: '**Critical Error:** System failed to process request.' } : msg
             ));
         } finally {
             setIsLoading(false);
@@ -312,6 +286,7 @@ export const DashboardPage: React.FC = () => {
         processMessage(actionText);
     }, [processMessage]);
 
+    // --- UPLOAD HANDLER ---
     const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -327,17 +302,13 @@ export const DashboardPage: React.FC = () => {
             const analysisData = await fileService.createDossier(uploadData.file_id);
 
             setSearchParams({ chatId: analysisData.chat_id });
-            
             await loadUserChats();
             setUploadProgress({ phase: null });
 
         } catch (error) {
             console.error(error);
             setUploadProgress({ phase: null });
-            setMessages([{
-                role: 'assistant',
-                content: "**ERROR:** Uplink or Analysis failed. Please try again."
-            }]);
+            setMessages([{ role: 'assistant', content: "**ERROR:** Uplink or Analysis failed. Please try again." }]);
         }
     }, [loadUserChats, setSearchParams]);
 
@@ -345,13 +316,60 @@ export const DashboardPage: React.FC = () => {
         fileInputRef.current?.click();
     }, []);
 
+    // --- NEW: DATABASE CONNECTION HANDLER ---
+    const handleConnectDB = useCallback(async (dbData: any) => {
+        // Switch view immediately to prepare for the chat
+        setView('chat');
+        setMessages([]);
+        
+        try {
+            // Show the user we are working on it
+            setUploadProgress({ phase: 'analyzing', fileName: dbData.name });
+            
+            const response = await fetch('http://localhost:8000/connections', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify(dbData)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Connection failed');
+            }
+
+            const data = await response.json();
+            
+            // The backend creates the Connection, Dossier, and Chat automatically.
+            // It returns the 'connection_id' which maps to the 'chat' for this connection.
+            // We use this ID to switch context.
+            setSearchParams({ chatId: data.connection_id });
+            
+            await loadUserChats();
+            setUploadProgress({ phase: null });
+
+        } catch (error: any) {
+            console.error(error);
+            setUploadProgress({ phase: null });
+            // Show error in the chat window if connection fails
+            setMessages([{
+                role: 'assistant',
+                content: `**ERROR:** Database connection failed. ${error.message}`
+            }]);
+        }
+    }, [loadUserChats, setSearchParams]);
+
     const toggleSidebar = useCallback(() => setSidebarOpen(prev => !prev), []);
 
     return (
         <div className="flex h-screen bg-[#050505] text-slate-200 overflow-hidden font-sans selection:bg-rose-500/30">
+            {/* Ambient Background Effects */}
             <div className="fixed inset-0 bg-grid-pattern opacity-[0.03] pointer-events-none"></div>
             <div className="fixed inset-0 bg-gradient-to-b from-black via-transparent to-rose-950/5 pointer-events-none"></div>
 
+            {/* Global Overlay for long-running processes */}
             <UploadProgressOverlay uploadProgress={uploadProgress} />
 
             <Sidebar
@@ -392,11 +410,13 @@ export const DashboardPage: React.FC = () => {
                         <WizardModal
                             onClose={() => setView('home')}
                             onFileUpload={handleFileUploadClick}
+                            onConnectDB={handleConnectDB} // <--- Added Handler Here
                         />
                     )}
                 </div>
             </main>
 
+            {/* Hidden Input for File Uploads */}
             <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} />
         </div>
     );

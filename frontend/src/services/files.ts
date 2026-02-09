@@ -19,5 +19,10 @@ export const fileService = {
   loadDossier: async (chatId: string): Promise<Dossier> => {
     const res = await api.get<Dossier>(`/chats/${chatId}/dossier`);
     return res.data;
+  },
+
+  connectDatabase: async (dbData: any) => {
+    const res = await api.post('/connections', dbData);
+    return res.data;
   }
 };

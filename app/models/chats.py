@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
-from sqlalchemy import UUID
+from pydantic import BaseModel, ConfigDict
 from uuid import UUID
 
 
@@ -10,12 +9,18 @@ class ChatCreate(BaseModel):
     file_id: UUID
 
 
-class ChatOut(BaseModel):
-    id: UUID
-    title: str | None
-    file_id: UUID
-    created_at: datetime
-    type: str
+class FileInfo(BaseModel):
+    file_path: str
+    filename: str
 
-    class Config:
-        from_attributes = True
+
+class ChatOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: Optional[str] = None
+    file_id: Optional[UUID] = None
+    connection_id: Optional[UUID] = None
+    created_at: datetime
+    type: Optional[str] = None
+    file: Optional[FileInfo] = None
