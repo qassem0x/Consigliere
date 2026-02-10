@@ -24,13 +24,13 @@ export const DashboardPage: React.FC = () => {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [currentDossier, setCurrentDossier] = useState<Dossier | null>(null);
-    
+
     // Tracks upload or connection progress
     const [uploadProgress, setUploadProgress] = useState<{
         phase: 'uploading' | 'analyzing' | null;
         fileName?: string;
     }>({ phase: null });
-    
+
     const [loadingChatHistory, setLoadingChatHistory] = useState(false);
 
     const [searchParams, setSearchParams] = useSearchParams();
@@ -90,7 +90,7 @@ export const DashboardPage: React.FC = () => {
             ]);
 
             setCurrentDossier(dossier);
-            
+
             // Map backend messages to frontend format
             const mapped: Message[] = history.map((m: any) => {
                 let content = m.content;
@@ -102,10 +102,10 @@ export const DashboardPage: React.FC = () => {
                 if (m.role === 'assistant') {
                     try {
                         const parsed = JSON.parse(m.content);
-                        
+
                         if (parsed && typeof parsed === 'object') {
                             content = parsed.text || m.content;
-                            
+
                             // Multi-step response
                             if (parsed.steps && Array.isArray(parsed.steps)) {
                                 steps = parsed.steps;
@@ -120,7 +120,7 @@ export const DashboardPage: React.FC = () => {
                                 }
                             }
                         }
-                    } catch (_) {}
+                    } catch (_) { }
                 }
 
                 return {
@@ -223,22 +223,22 @@ export const DashboardPage: React.FC = () => {
                         const chunk = JSON.parse(line);
 
                         if (chunk.type === 'step_start') {
-                            setMessages(prev => prev.map(msg => 
-                                msg.id === assistantMsgId 
+                            setMessages(prev => prev.map(msg =>
+                                msg.id === assistantMsgId
                                     ? { ...msg, content: msg.content || `${chunk.description}...` }
                                     : msg
                             ));
-                        } 
+                        }
                         else if (chunk.type === 'step_result') {
-                            setMessages(prev => prev.map(msg => 
-                                msg.id === assistantMsgId 
+                            setMessages(prev => prev.map(msg =>
+                                msg.id === assistantMsgId
                                     ? { ...msg, steps: [...(msg.steps || []), chunk.data] }
                                     : msg
                             ));
                         }
                         else if (chunk.type === 'final_result') {
-                            setMessages(prev => prev.map(msg => 
-                                msg.id === assistantMsgId 
+                            setMessages(prev => prev.map(msg =>
+                                msg.id === assistantMsgId
                                     ? {
                                         ...msg,
                                         content: chunk.data.text,
@@ -250,12 +250,12 @@ export const DashboardPage: React.FC = () => {
                             ));
                         }
                         else if (chunk.type === 'final') {
-                            setMessages(prev => prev.map(msg => 
+                            setMessages(prev => prev.map(msg =>
                                 msg.id === assistantMsgId ? { ...msg, id: chunk.message_id } : msg
                             ));
                         }
                         else if (chunk.type === 'error') {
-                            setMessages(prev => prev.map(msg => 
+                            setMessages(prev => prev.map(msg =>
                                 msg.id === assistantMsgId ? { ...msg, content: `**Error:** ${chunk.message}` } : msg
                             ));
                         }
@@ -266,7 +266,7 @@ export const DashboardPage: React.FC = () => {
             }
         } catch (error) {
             console.error("Message processing failed:", error);
-            setMessages(prev => prev.map(msg => 
+            setMessages(prev => prev.map(msg =>
                 msg.id === assistantMsgId ? { ...msg, content: '**Critical Error:** System failed to process request.' } : msg
             ));
         } finally {
@@ -281,7 +281,7 @@ export const DashboardPage: React.FC = () => {
             setInput('');
         }
     }, [input, processMessage]);
-    
+
     const handleRecommendedAction = useCallback((actionText: string) => {
         processMessage(actionText);
     }, [processMessage]);
@@ -321,11 +321,11 @@ export const DashboardPage: React.FC = () => {
         // Switch view immediately to prepare for the chat
         setView('chat');
         setMessages([]);
-        
+
         try {
             // Show the user we are working on it
             setUploadProgress({ phase: 'analyzing', fileName: dbData.name });
-            
+
             const response = await fetch('http://localhost:8000/connections', {
                 method: 'POST',
                 headers: {
@@ -341,12 +341,12 @@ export const DashboardPage: React.FC = () => {
             }
 
             const data = await response.json();
-            
+
             // The backend creates the Connection, Dossier, and Chat automatically.
             // It returns the 'connection_id' which maps to the 'chat' for this connection.
             // We use this ID to switch context.
             setSearchParams({ chatId: data.connection_id });
-            
+
             await loadUserChats();
             setUploadProgress({ phase: null });
 
@@ -377,7 +377,7 @@ export const DashboardPage: React.FC = () => {
                 userChats={userChats}
                 activeChatId={activeChatId}
                 onNewChat={handleNewChat}
-                onLoadChat={handleChatSelect} 
+                onLoadChat={handleChatSelect}
                 onLogout={logout}
                 onDeleteChat={handleDeleteChat}
             />
@@ -399,6 +399,7 @@ export const DashboardPage: React.FC = () => {
                             input={input}
                             loadingChatHistory={loadingChatHistory}
                             currentDossier={currentDossier}
+                            sourceName={userChats.find(c => c.id === activeChatId)?.title || userChats.find(c => c.id === activeChatId)?.file?.filename || "Unknown Source"}
                             scrollRef={scrollRef}
                             onInputChange={setInput}
                             onSendMessage={handleSendMessage}

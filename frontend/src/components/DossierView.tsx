@@ -5,65 +5,62 @@ import { Dossier } from '../types';
 
 interface DossierViewProps {
   dossier: Dossier;
+  title?: string;
   onActionClick: (action: string) => void;
 }
 
-export const DossierView: React.FC<DossierViewProps> = ({ dossier, onActionClick }) => {
+export const DossierView: React.FC<DossierViewProps> = ({ dossier, title, onActionClick }) => {
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      
-      {/* Header Block */}
-      <div className="bg-[#0a0a0b] border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative">
-        {/* Top Decoration */}
-        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-rose-500/0 via-rose-500/50 to-rose-500/0 opacity-50"></div>
+    <div className="w-full max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-        <div className="bg-white/[0.02] border-b border-white/5 p-5 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-rose-500/10 rounded-xl border border-rose-500/20 shadow-[0_0_15px_-3px_rgba(244,63,94,0.3)]">
-              <FileText size={20} className="text-rose-500" />
+      {/* Main Card */}
+      <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+
+        {/* Card Header */}
+        <div className="flex flex-col space-y-1.5 p-6 border-b">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-md">
+                <FileText size={20} className="text-primary" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-semibold tracking-tight text-lg">
+                  {title || 'Unknown Source'}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Classified Intelligence Briefing
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-white tracking-wide uppercase font-mono">
-                {'Unknown Source'}
-              </h3>
-              <p className="text-[10px] text-rose-400/80 font-mono uppercase tracking-widest mt-1">
-                Classified Intelligence Briefing
-              </p>
+
+            <div className="hidden md:flex items-center gap-2 px-2.5 py-0.5 rounded-full border bg-secondary text-secondary-foreground text-xs font-medium">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span>Analysis Complete</span>
             </div>
-          </div>
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest">
-              Analysis Complete
-            </span>
           </div>
         </div>
 
-        <div className="p-8">
-          {/* MARKDOWN CONTENT */}
-          <div className="prose prose-invert max-w-none 
-              /* PARAGRAPH STYLING */
-              prose-p:text-slate-300 prose-p:leading-7 prose-p:mb-4
-              
-              /* HEADER 1 (##) STYLING - The fix you requested */
-              prose-h2:text-xl prose-h2:font-bold prose-h2:text-white prose-h2:uppercase prose-h2:tracking-wider prose-h2:mb-4 prose-h2:mt-8 prose-h2:flex prose-h2:items-center prose-h2:gap-2
-              prose-h2:border-b prose-h2:border-white/10 prose-h2:pb-2
-              
-              /* HEADER 2 (###) STYLING */
-              prose-h3:text-sm prose-h3:font-bold prose-h3:text-rose-400 prose-h3:uppercase prose-h3:tracking-widest prose-h3:mt-6 prose-h3:mb-2
-              
-              /* LIST STYLING */
-              prose-ul:my-4 prose-ul:space-y-2 
-              prose-li:text-slate-300 prose-li:pl-2
-              prose-li:marker:text-rose-500 
-              
-              /* BOLD TEXT */
-              prose-strong:text-rose-200 prose-strong:font-semibold
-          ">
+        {/* Card Content */}
+        <div className="p-6 pt-6">
+          <div className="text-sm">
             <ReactMarkdown
-               components={{
-                // Custom renderer to add icons to headers automatically if you want
-                h2: ({node, ...props}) => <h2 className="text-xl font-bold text-white uppercase tracking-wider mb-4 mt-8 border-b border-white/10 pb-2" {...props} />,
+              components={{
+                h1: ({ node, ...props }) => <h1 className="scroll-m-20 text-3xl font-bold tracking-tight mb-4" {...props} />,
+                h2: ({ node, ...props }) => <h2 className="scroll-m-20 border-b pb-2 text-2xl font-semibold tracking-tight mt-8 mb-4 first:mt-0" {...props} />,
+                h3: ({ node, ...props }) => <h3 className="scroll-m-20 text-xl font-semibold tracking-tight mt-6 mb-2" {...props} />,
+                p: ({ node, ...props }) => <p className="leading-7 [&:not(:first-child)]:mt-6 text-muted-foreground" {...props} />,
+                ul: ({ node, ...props }) => <ul className="my-6 ml-6 list-disc [&>li]:mt-2 text-muted-foreground" {...props} />,
+                ol: ({ node, ...props }) => <ol className="my-6 ml-6 list-decimal [&>li]:mt-2 text-muted-foreground" {...props} />,
+                li: ({ node, ...props }) => <li className="leading-7" {...props} />,
+                blockquote: ({ node, ...props }) => <blockquote className="mt-6 border-l-2 pl-6 italic text-muted-foreground" {...props} />,
+                code: ({ node, className, ...props }) => {
+                  // A simpler check for inline vs block code could be used if needed, 
+                  // but typically ReactMarkdown handles this via the presence of `children` usually being a string.
+                  // For simplicity in this shadcn port, we apply a generic style.
+                  return <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold" {...props} />
+                },
+                pre: ({ node, ...props }) => <pre className="mb-4 mt-6 overflow-x-auto rounded-lg border bg-muted p-4" {...props} />,
+                a: ({ node, ...props }) => <a className="font-medium text-primary underline underline-offset-4 hover:no-underline" {...props} />,
               }}
             >
               {dossier.briefing}
@@ -72,15 +69,15 @@ export const DossierView: React.FC<DossierViewProps> = ({ dossier, onActionClick
 
           {/* Key Entities Tags */}
           {dossier.key_entities && dossier.key_entities.length > 0 && (
-            <div className="mt-8 pt-6 border-t border-white/5">
-              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-3">
-                <Target size={14} className="text-rose-500" /> Key Vectors Identified
+            <div className="mt-8 pt-6 border-t flex flex-col gap-3">
+              <span className="text-xs font-medium text-muted-foreground flex items-center gap-2 uppercase tracking-wider">
+                <Target size={14} className="text-primary" /> Key Vectors
               </span>
               <div className="flex flex-wrap gap-2">
                 {dossier.key_entities.map((entity, i) => (
-                  <span 
-                    key={i} 
-                    className="px-3 py-1.5 bg-white/[0.03] border border-white/10 rounded-md text-xs text-slate-300 font-mono hover:border-rose-500/40 hover:text-rose-400 transition-colors cursor-default"
+                  <span
+                    key={i}
+                    className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80"
                   >
                     {entity}
                   </span>
@@ -91,31 +88,27 @@ export const DossierView: React.FC<DossierViewProps> = ({ dossier, onActionClick
         </div>
       </div>
 
-      {/* Action Grid */}
+      {/* Recommended Actions */}
       {dossier.recommended_actions && dossier.recommended_actions.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="col-span-full mb-1">
-                <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <ShieldAlert size={14} className="text-rose-500" /> Recommended Protocols
-                </span>
-            </div>
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2 px-1">
+            <ShieldAlert size={14} className="text-primary" /> Recommended Protocols
+          </h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {dossier.recommended_actions.map((action, idx) => (
               <button
                 key={idx}
                 onClick={() => onActionClick(action)}
-                className="group relative p-5 rounded-xl border border-white/10 bg-[#0a0a0b] hover:bg-rose-500/[0.02] hover:border-rose-500/30 text-left transition-all hover:shadow-[0_0_20px_rgba(244,63,94,0.05)] active:scale-[0.98]"
+                className="group relative flex items-center justify-between space-x-4 rounded-lg border bg-card p-4 text-card-foreground shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                <div className="absolute top-0 left-0 w-1 h-full bg-rose-500/0 group-hover:bg-rose-500 rounded-l-xl transition-all duration-300"></div>
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-sm font-medium text-slate-300 group-hover:text-rose-100 transition-colors line-clamp-2">
-                    {action}
-                  </span>
-                  <div className="p-1.5 rounded-lg bg-white/5 text-slate-500 group-hover:bg-rose-500 group-hover:text-white transition-all duration-300">
-                    <ArrowRight size={14} className="group-hover:-rotate-45 transition-transform duration-300" />
-                  </div>
-                </div>
+                <span className="text-sm font-medium leading-none group-hover:underline-offset-4 line-clamp-2 text-left">
+                  {action}
+                </span>
+                <ArrowRight size={16} className="text-muted-foreground group-hover:translate-x-1 transition-transform duration-200" />
               </button>
             ))}
+          </div>
         </div>
       )}
     </div>

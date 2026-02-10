@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        /* Enforce Dark Theme by Default */
+        /* BG: #0a0a0b -> HSL 240 5.9% 4.1% approx */
+        --background: 240 5.9% 4.1%;
+        --foreground: 0 0% 98%;
+
+        /* Card: Slightly lighter than BG */
+        --card: 240 5.9% 6%;
+        --card-foreground: 0 0% 98%;
+
+        --popover: 240 5.9% 4.1%;
+        --popover-foreground: 0 0% 98%;
+
+        /* Primary: Rose 500 #f43f5e -> 346.8 77.2% 49.8% */
+        --primary: 346.8 77.2% 49.8%;
+        --primary-foreground: 0 0% 98%;
+
+        /* Secondary: Darker/Subtle */
+        --secondary: 240 3.7% 15.9%;
+        --secondary-foreground: 0 0% 98%;
+
+        /* Muted: Slate-ish */
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+
+        /* Accent: Hover states */
+        --accent: 240 3.7% 15.9%;
+        --accent-foreground: 0 0% 98%;
+
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 0 0% 98%;
+
+        --border: 240 3.7% 15.9%;
+        --input: 240 3.7% 15.9%;
+        --ring: 346.8 77.2% 49.8%;
+
+        --radius: 0.5rem;
+    }
+
+    .dark {
+        /* Redundant but safe - same values */
+        --background: 240 5.9% 4.1%;
+        --foreground: 0 0% 98%;
+        --card: 240 5.9% 6%;
+        --card-foreground: 0 0% 98%;
+        --popover: 240 5.9% 4.1%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 346.8 77.2% 49.8%;
+        --primary-foreground: 0 0% 98%;
+        --secondary: 240 3.7% 15.9%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --accent: 240 3.7% 15.9%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 3.7% 15.9%;
+        --input: 240 3.7% 15.9%;
+        --ring: 346.8 77.2% 49.8%;
+    }
+}
+
+@layer base {
+    html {
+        font-size: 13px;
+        /* Slightly tighter scale for high density */
+    }
+
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+    }
+}
