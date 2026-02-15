@@ -9,10 +9,10 @@ from sqlalchemy import create_engine, inspect, text
 from typing import List, Dict, Any
 import logging
 
-from app.services.semantic_inference_engine import SemanticInferenceEngine
+from app.services.semantic.inference_engine import SemanticInferenceEngine
 from app.services.base_agent import BaseAgent
-from app.services.llm import call_llm
-from app.services.sql_agent_cache import SQLAgentCache
+from app.core.llm import call_llm
+from app.services.sql.cache import SQLAgentCache
 from app.core.prompts import (
     SQL_GENERATOR_PROMPT,
     DOSSIER_PROMPT,
@@ -39,7 +39,7 @@ class SQLAgent(BaseAgent):
         self.engine = self.cache_manager.get_engine(connection_string)
         self.target_db = connection_string.split(":")[0]
         self.max_retries = 3
-        self.result_limit = 50  # Configurable result limit
+        self.result_limit = 50
 
         # Ensure plots directory exists
         os.makedirs("static/plots", exist_ok=True)
@@ -161,7 +161,7 @@ class SQLAgent(BaseAgent):
                 "content": CHART_GENERATOR_PROMPT.format(
                     step_description=step["description"],
                     chart_type=chart_type,
-                    data_info=json.dumps(data_info, indent=2),
+                    data_info=json.dumps(data_info, indent=2, default=str),
                     user_query=user_query,
                 ),
             }

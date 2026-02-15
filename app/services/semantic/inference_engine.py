@@ -219,9 +219,3 @@ class SemanticInferenceEngine:
                 text(f"SELECT COUNT(*) AS count FROM {safe_path}")
             ).fetchone()
         return result[0] if result else 0
-
-
-if __name__ == "__main__":
-    from sqlalchemy import create_engine
-
-    pass

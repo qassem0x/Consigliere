@@ -11,7 +11,7 @@ from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 import os
 
-from app.services.sql_agent import SQLAgent
+from app.services.sql.agent import SQLAgent
 
 load_dotenv()
 

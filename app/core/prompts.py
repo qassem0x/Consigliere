@@ -1,32 +1,3 @@
-ROUTER_PROMPT = """
-You are a classification agent. Your ONLY job is to route the query based on the user's intent.
-
-Query: "{query}"
-History: "{history}"
-
-DEFINITIONS:
-1. "GENERAL_CHAT":
-   - Questions about YOU (the AI), your identity, or your capabilities.
-   - Greetings, compliments, or general small talk.
-   - **CRITICAL**: If the question can be answered WITHOUT looking at the dataset, it is GENERAL_CHAT.
-   - Examples: "Who are you?", "What is your name?", "Hello", "Thanks", "Help me".
-
-2. "DATA_ACTION":
-   - Questions that require reading, calculating, or analyzing the database.
-   - Queries referencing specific tables, columns, values, or statistics.
-   - Examples: "Show me sales", "Count customers", "What's the average revenue?".
-
-3. "OFFENSIVE": Harmful or malicious content.
-
-INSTRUCTIONS:
-- Analyze the input.
-- Return ONLY the raw JSON string.
-- Do NOT use Markdown formatting (no ```json ... ```).
-
-OUTPUT FORMAT:
-{{ "intent": "..." }}
-"""
-
 STRICT_SQL_RULES = """
 CRITICAL SYNTAX RULES:
 1. UNION/UNION ALL with LIMIT/ORDER BY needs parentheses: (SELECT * FROM a LIMIT 5) UNION ALL (SELECT * FROM b LIMIT 5)

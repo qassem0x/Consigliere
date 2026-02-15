@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.db_models import User, File as DBFile, Dossier, Chat
-from app.services.excel_agent import ExcelDataAgent
+from app.services.excel.agent import ExcelDataAgent
 from app.services.ingestion import _transform_to_parquet
 
 router = APIRouter()

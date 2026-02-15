@@ -7,8 +7,8 @@ from app.core.database import SessionLocal, get_db
 from app.core.deps import get_current_user
 from app.models.db_models import User, Chat, Message
 from app.models.messages import MessageCreate, MessageOut
-from app.services.excel_agent import ExcelDataAgent
-from app.services.sql_agent import SQLAgent
+from app.services.excel.agent import ExcelDataAgent
+from app.services.sql.agent import SQLAgent
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 import json

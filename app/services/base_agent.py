@@ -1,5 +1,5 @@
 import json_repair
-from app.services.llm import call_llm
+from app.core.llm import call_llm
 
 
 class BaseAgent:
