@@ -1,4 +1,5 @@
 import React, { useState, memo } from 'react';
+import ReactMarkdown from 'react-markdown';
 import {
     Check, Copy, BarChart3, Table2, AlertCircle, TrendingUp, Activity, Terminal, Loader2, Zap
 } from 'lucide-react';
@@ -134,8 +135,20 @@ export const TimelineStep: React.FC<{ step: StepResult; isLast: boolean; onImage
                     )}
 
                     {step.type === 'text' && (
-                        <div className="p-3 text-xs text-muted-foreground font-mono whitespace-pre-wrap leading-relaxed bg-muted/30">
-                            {step.data}
+                        <div className="p-3 text-xs text-muted-foreground font-mono leading-relaxed bg-muted/30">
+                            <ReactMarkdown
+                                components={{
+                                    p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                                    ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1" {...props} />,
+                                    ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1" {...props} />,
+                                    li: ({ node, ...props }) => <li className="mb-0.5" {...props} />,
+                                    h1: ({ node, ...props }) => <h1 className="text-sm font-bold mt-3 mb-2" {...props} />,
+                                    h2: ({ node, ...props }) => <h2 className="text-xs font-bold mt-2 mb-1" {...props} />,
+                                    h3: ({ node, ...props }) => <h3 className="text-xs font-semibold mt-2 mb-1" {...props} />,
+                                }}
+                            >
+                                {step.data}
+                            </ReactMarkdown>
                         </div>
                     )}
 

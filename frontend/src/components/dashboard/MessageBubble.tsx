@@ -58,7 +58,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx, sho
                         "prose prose-sm max-w-none",
                         isAssistant ? "prose-invert" : "prose-invert text-primary-foreground"
                     )}>
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        <ReactMarkdown
+                            components={{
+                                p: ({ node, ...props }) => <p className="mb-3 last:mb-0 leading-relaxed" {...props} />,
+                                ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-3 space-y-1.5" {...props} />,
+                                ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-3 space-y-1.5" {...props} />,
+                                li: ({ node, ...props }) => <li className="mb-0.5 pl-1" {...props} />,
+                                h1: ({ node, ...props }) => <h1 className="text-xl font-bold mt-4 mb-3 pb-2 border-b border-border/50" {...props} />,
+                                h2: ({ node, ...props }) => <h2 className="text-lg font-bold mt-4 mb-2" {...props} />,
+                                h3: ({ node, ...props }) => <h3 className="text-base font-semibold mt-3 mb-2" {...props} />,
+                                blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-primary/30 pl-4 py-1 my-3 bg-muted/30 italic" {...props} />,
+                                code: ({ node, ...props }) => <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono text-primary" {...props} />,
+                            }}
+                        >
+                            {msg.content}
+                        </ReactMarkdown>
                     </div>
 
                     {isAssistant && hasSteps && !showSteps && (

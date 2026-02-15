@@ -144,9 +144,11 @@ async def send_message(
 
                 try:
                     chunk_data = json.loads(chunk)
-                    final_response["text"] = chunk_data["data"].get("text", "")
-                    final_response["steps"] = chunk_data["data"].get("steps", [])
-                    final_response["code"] = chunk_data["data"].get("code", None)
+                    if chunk_data.get("type") == "final_result":
+                        data = chunk_data.get("data", {})
+                        final_response["text"] = data.get("text", "")
+                        final_response["steps"] = data.get("steps", [])
+                        final_response["code"] = data.get("code", None)
 
                 except Exception as chunk_err:
                     print(f"DEBUG: Failed to parse chunk: {chunk_err}")

@@ -8,8 +8,10 @@ dotenv.load_dotenv()
 
 litellm.drop_params = True
 litellm.set_verbose = False
+litellm.suppress_debug_info = True
 
-MODEL_NAME = os.getenv("MODEL_NAME", "ollama/llama3.2")
+MODEL_NAME = os.getenv("MODEL_NAME", "ollama/llama2:7b")  # default to local
+# MODEL_NAME = "ollama/llama2:7b"
 
 
 @retry(

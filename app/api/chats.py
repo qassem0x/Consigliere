@@ -114,7 +114,7 @@ def delete_chat(
     # get file path to invalidate cache & delete from disk
     file_path = "data/" + chat.file.file_path
     if file_path:
-        from app.services.cache import DataCache
+        from app.services.excel_agent_cache import DataCache
 
         cache = DataCache()
         cache.invalidate(file_path)

@@ -4,71 +4,57 @@ import pandas as pd
 import re
 from sqlalchemy import create_engine, inspect, text
 from typing import List, Dict, Any
+import logging
 
+from app.services.semantic_inference_engine import SemanticInferenceEngine
 from app.services.base_agent import BaseAgent
 from app.services.llm import call_llm
+from app.services.sql_agent_cache import SQLAgentCache
 from app.core.prompts import (
     SQL_GENERATOR_PROMPT,
     DOSSIER_PROMPT,
     ANALYSIS_FORMAT_PROMPT,
+    SQL_BRAIN_PROMPT,
+    STRICT_SQL_RULES,
+    SQL_FIX_PROMPT,
+    SUMMARY_SYNTHESIS_PROMPT,
 )
 
-STRICT_SQL_RULES = """
-CRITICAL SYNTAX RULES:
-1. If using UNION or UNION ALL with LIMIT/ORDER BY, you MUST wrap each subquery in parentheses:
-   CORRECT: (SELECT * FROM a LIMIT 5) UNION ALL (SELECT * FROM b LIMIT 5)
-   INCORRECT: SELECT * FROM a LIMIT 5 UNION ALL SELECT * FROM b LIMIT 5
-2. Prefer using Common Table Expressions (WITH clause) over complex nested subqueries.
-3. Ensure all table and column names match the schema exactly.
-"""
-
-SQL_FIX_PROMPT = """
-You are a PostgreSQL expert. A previous SQL query failed to execute.
-Your task is to FIX the query based on the database error message.
-
-Target Database: {target_db}
-
-Error Message:
-{error}
-
-Failed Query:
-{query}
-
-Database Schema:
-{schema}
-
-Instructions:
-1. Analyze the syntax error carefully.
-2. If the error is about "UNION", you likely forgot parentheses around subqueries with LIMIT/ORDER BY.
-3. Rewrite the query to be syntactically correct for PostgreSQL.
-4. DO NOT output the same query again.
-5. Return ONLY the raw SQL query. No Markdown, no explanations.
-"""
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class SQLAgent(BaseAgent):
     def __init__(self, connection_string: str):
         super().__init__()
-        self.engine = create_engine(connection_string)
-        self.target_db = connection_string.split(":")[0]
-        self.schema = self._get_schema_string()
-        self.max_retries = 3
+        self.connection_string = connection_string
+        self.cache_manager = SQLAgentCache()
 
-    def _get_schema_string(self) -> str:
-        try:
-            inspector = inspect(self.engine)
-            schema_lines = []
-            for table in inspector.get_table_names():
-                columns = inspector.get_columns(table)
-                col_str = ", ".join(
-                    [f"{col['name']} ({str(col['type'])})" for col in columns]
-                )
-                schema_lines.append(f"Table {table} ({col_str})")
-            return "\n".join(schema_lines)
-        except Exception as e:
-            return f"Error reading schema: {str(e)}"
+        # Get engine from cache or create new one
+        self.engine = self.cache_manager.get_engine(connection_string)
+        self.target_db = connection_string.split(":")[0]
+        self.max_retries = 3
+        self.result_limit = 50  # Configurable result limit
+
+        # Try to get schema from cache
+        cached_schema = self.cache_manager.get_schema(connection_string)
+        if cached_schema:
+            self.schema = cached_schema
+            logger.info(
+                f"SQLAgent initialized with cached schema: {len(self.schema)} chars"
+            )
+        else:
+            # Generate schema and cache it
+            self.semantic_engine = SemanticInferenceEngine(self.engine)
+            self.schema = self.semantic_engine.infer()
+            self.cache_manager.set_schema(connection_string, self.schema)
+            logger.info(
+                f"SQLAgent initialized with new schema: {len(self.schema)} chars"
+            )
 
     def _generate_sql(self, user_query: str) -> str:
+        """Generate SQL query from natural language."""
         system_content = (
             SQL_GENERATOR_PROMPT.format(
                 schema=self.schema, query=user_query, target_db=self.target_db
@@ -81,6 +67,7 @@ class SQLAgent(BaseAgent):
         return self._clean_sql(response)
 
     def _fix_sql(self, bad_query: str, error_msg: str) -> str:
+        """Attempt to fix a failed SQL query."""
         messages = [
             {
                 "role": "system",
@@ -96,6 +83,7 @@ class SQLAgent(BaseAgent):
         return self._clean_sql(response)
 
     def _clean_sql(self, response: str) -> str:
+        """Clean SQL response from LLM output."""
         cleaned = response.replace("```sql", "").replace("```", "").strip()
         if not cleaned.lower().startswith("select") and not cleaned.lower().startswith(
             "with"
@@ -106,6 +94,7 @@ class SQLAgent(BaseAgent):
         return cleaned
 
     def _sanitize_sql(self, sql_query: str) -> bool:
+        """Check if SQL query is safe (read-only)."""
         lowered = sql_query.lower()
         if "error:" in lowered:
             return False
@@ -117,6 +106,7 @@ class SQLAgent(BaseAgent):
             r"\balter\b",
             r"\bgrant\b",
             r"\btruncate\b",
+            r"\bcreate\b",
         ]
         for pattern in banned:
             if re.search(pattern, lowered):
@@ -124,24 +114,41 @@ class SQLAgent(BaseAgent):
         return True
 
     def _execute_code(self, sql_query: str) -> pd.DataFrame:
+        """Execute SQL query and return results as DataFrame with caching."""
+        # Try to get from cache first
+        cached_df = self.cache_manager.get_query_result(
+            self.connection_string, sql_query
+        )
+        if cached_df is not None:
+            return cached_df
+
+        # Execute query if not cached
         with self.engine.connect() as conn:
             result = conn.execute(text(sql_query))
             if result.returns_rows:
                 df = pd.DataFrame(result.fetchall(), columns=result.keys())
+                # Cache the result
+                self.cache_manager.set_query_result(
+                    self.connection_string, sql_query, df
+                )
                 return df
             return pd.DataFrame()
 
     def _format_final_response(
         self, user_query: str, all_results: List[Dict[str, Any]]
     ) -> str:
+        """Format final response using LLM when no summary step exists."""
         summary_parts = []
         for i, result in enumerate(all_results, 1):
             if result["type"] == "table":
                 summary_parts.append(
-                    f"Step {i}: Query {all_results[i-1].get('query', 'Unknown')} returned {result.get('total_rows', 0)} rows. Columns: {', '.join(result.get('columns', []))}"
+                    f"Step {i}: Retrieved {result.get('total_rows', 0)} rows. "
+                    f"Columns: {', '.join(result.get('columns', []))}"
                 )
             elif result["type"] == "error":
                 summary_parts.append(f"Step {i}: Error - {result.get('data', '')}")
+            elif result["type"] == "text":
+                summary_parts.append(f"Step {i}: {result.get('data', '')}")
 
         combined_summary = "\n".join(summary_parts)
 
@@ -159,12 +166,184 @@ class SQLAgent(BaseAgent):
             response = call_llm(messages, temperature=0.7, timeout=30)
             return response
         except Exception as e:
-            print(f"FORMAT ERROR: {e}")
+            logger.error(f"Format error: {e}")
             return f"Analysis complete. {combined_summary}"
 
-    def answer(self, user_query: str, history_str: str = ""):
-        intent = self._decide_intent(user_query, history_str)
+    def _consult_brain(self, user_query: str, history_str: str = "") -> Dict[str, Any]:
+        """Consult the planning brain to generate analysis plan."""
+        messages = [
+            {
+                "role": "system",
+                "content": SQL_BRAIN_PROMPT.format(
+                    schema=self.schema,
+                    history=history_str if history_str else "No previous conversation.",
+                    query=user_query,
+                ),
+            }
+        ]
 
+        try:
+            response = call_llm(messages, temperature=0.1, timeout=60)
+
+            if "```" in response:
+                response = response.replace("```json", "").replace("```", "").strip()
+
+            brain_output = json_repair.loads(response)
+
+            if "intent" not in brain_output:
+                logger.warning(
+                    f"Brain output missing 'intent', defaulting to DATA_ACTION"
+                )
+                brain_output["intent"] = "DATA_ACTION"
+
+            # Validate plan structure
+            if brain_output.get("intent") == "DATA_ACTION" and not brain_output.get(
+                "plan"
+            ):
+                brain_output["plan"] = [
+                    {
+                        "step_number": 1,
+                        "type": "table",
+                        "title": "Direct Query",
+                        "description": f"Execute SQL for: {user_query}",
+                        "chart_type": "none",
+                    }
+                ]
+
+            return brain_output
+
+        except Exception as e:
+            logger.error(f"Brain malfunction: {e}")
+            return {
+                "intent": "DATA_ACTION",
+                "reasoning": "Fallback due to JSON parsing error.",
+                "plan": [
+                    {
+                        "step_number": 1,
+                        "type": "table",
+                        "title": "Direct Query",
+                        "description": f"Execute SQL for: {user_query}",
+                        "chart_type": "none",
+                    }
+                ],
+            }
+
+    def _execute_sql_step(
+        self, step: Dict[str, Any], all_sqls: List[str]
+    ) -> Dict[str, Any]:
+        """Execute a SQL-based step (metric/table)."""
+        current_query = step["description"]
+        sql_query = self._generate_sql(current_query)
+        df = None
+        last_error = None
+        current_sql_used = ""
+
+        for attempt in range(self.max_retries):
+            if not self._sanitize_sql(sql_query):
+                return {
+                    "step_number": step["step_number"],
+                    "step_description": step["title"],
+                    "step_type": "error",
+                    "type": "error",
+                    "data": "Security Alert: Prohibited SQL commands detected.",
+                }
+
+            try:
+                df = self._execute_code(sql_query)
+                current_sql_used = sql_query
+                logger.info(
+                    f"Step {step['step_number']}: Query executed successfully, {len(df)} rows"
+                )
+                break
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(
+                    f"SQL Execution failed (Attempt {attempt+1}/{self.max_retries}): {last_error}"
+                )
+
+                if attempt < self.max_retries - 1:
+                    sql_query = self._fix_sql(sql_query, last_error)
+
+        # Prepare result
+        if df is not None:
+            df_clean = df.where(pd.notnull(df), None)
+            data_dict = (
+                df_clean.head(self.result_limit)
+                .fillna("")
+                .astype(str)
+                .to_dict(orient="records")
+            )
+
+            exec_result = {
+                "step_number": step["step_number"],
+                "step_description": step["title"],
+                "step_type": step.get("type", "table"),  # Use actual type from plan
+                "type": "table",
+                "data": data_dict,
+                "columns": list(df.columns),
+                "total_rows": len(df),
+                "description": f"Retrieved {len(df)} records",
+                "query": current_sql_used,
+            }
+        else:
+            # Failed after retries
+            exec_result = {
+                "step_number": step["step_number"],
+                "step_description": step["title"],
+                "step_type": "error",
+                "type": "error",
+                "data": f"Failed to execute query after {self.max_retries} attempts. Error: {last_error}",
+            }
+
+        if current_sql_used:
+            all_sqls.append(
+                f"-- Step {step['step_number']}: {step['description']}\n{current_sql_used}"
+            )
+
+        return exec_result
+
+    def _execute_summary_step(
+        self, step: Dict[str, Any], user_query: str, all_results: List[Dict[str, Any]]
+    ) -> str:
+        """Execute a summary step by synthesizing previous results."""
+        context_str = ""
+        for res in all_results:
+            if res["type"] == "table":
+                context_str += (
+                    f"Step {res['step_number']} ({res['step_description']}):\n"
+                )
+                context_str += f"Query: {res.get('query','N/A')}\n"
+                context_str += f"Total Rows: {res.get('total_rows', 0)}\n"
+                context_str += (
+                    f"Data Sample (Top 5 rows): {str(res.get('data', [])[:5])}\n\n"
+                )
+            elif res["type"] == "error":
+                context_str += f"Step {res['step_number']} Error: {res.get('data')}\n\n"
+
+        messages = [
+            {
+                "role": "system",
+                "content": SUMMARY_SYNTHESIS_PROMPT.format(
+                    user_query=user_query,
+                    context_str=context_str,
+                    step_description=step["description"],
+                ),
+            }
+        ]
+        try:
+            summary_text = call_llm(messages, temperature=0.5, timeout=30)
+            logger.info(f"Step {step['step_number']}: Summary generated successfully")
+            return summary_text
+        except Exception as e:
+            logger.error(f"Summary generation failed: {e}")
+            return "Summary generation failed. See individual step results for details."
+
+    def answer(self, user_query: str, history_str: str = ""):
+        """Main method to answer user queries."""
+        brain_output = self._consult_brain(user_query, history_str)
+        intent = brain_output.get("intent", "DATA_ACTION")
+
+        # Handle non-data intents
         if intent == "GENERAL_CHAT":
             yield json.dumps(
                 {
@@ -193,17 +372,22 @@ class SQLAgent(BaseAgent):
             )
             return
 
-        plan = {
-            "plan": [
+        plan = brain_output.get("plan", [])
+
+        # Validate plan
+        if not plan:
+            logger.warning("Empty plan received, creating fallback")
+            plan = [
                 {
                     "step_number": 1,
-                    "type": "code",
-                    "description": f"Execute SQL query on {self.target_db} database",
-                    "depends_on": [],
+                    "type": "table",
+                    "title": "Direct Query",
+                    "description": user_query,
+                    "chart_type": "none",
                 }
             ]
-        }
 
+        # Yield initial planning step
         yield json.dumps(
             {
                 "type": "step_start",
@@ -213,91 +397,81 @@ class SQLAgent(BaseAgent):
         )
 
         all_results = []
-        final_sql_used = ""
+        all_sqls = []
+        final_summary_text = ""
 
-        step = plan["plan"][0]
+        logger.info(f"Executing plan with {len(plan)} steps")
 
-        yield json.dumps(
-            {
-                "type": "step_start",
-                "step_number": step["step_number"],
-                "description": step["description"],
-                "step_type": step["type"],
-            }
-        )
+        # Execute each step in the plan
+        for step in plan:
+            step_type = step.get("type", "table")
+            step_number = step.get("step_number", 0)
 
-        sql_query = self._generate_sql(user_query)
-        df = None
-        last_error = None
-
-        for attempt in range(self.max_retries):
-            if not self._sanitize_sql(sql_query):
+            # Yield step_start for all types except summary (to hide from UI)
+            if step_type != "summary":
                 yield json.dumps(
                     {
-                        "type": "step_result",
-                        "data": {
-                            "step_number": step["step_number"],
-                            "type": "error",
-                            "data": "Security Alert: Prohibited SQL commands detected.",
-                        },
+                        "type": "step_start",
+                        "step_number": step_number,
+                        "description": step.get("description", "Processing..."),
+                        "step_type": step_type,
                     }
                 )
-                return
 
-            try:
-                df = self._execute_code(sql_query)
-                final_sql_used = sql_query
-                break
-            except Exception as e:
-                last_error = str(e)
-                print(
-                    f"DEBUG: SQL Execution failed (Attempt {attempt+1}): {last_error}"
+            # 1. HANDLE METRIC / TABLE -> Execute SQL
+            if step_type in ["metric", "table"]:
+                exec_result = self._execute_sql_step(step, all_sqls)
+                all_results.append(exec_result)
+                yield json.dumps({"type": "step_result", "data": exec_result})
+
+            # 2. HANDLE SUMMARY -> Execute LLM Synthesis
+            elif step_type == "summary":
+                final_summary_text = self._execute_summary_step(
+                    step, user_query, all_results
                 )
+                # Summary is not yielded as a step_result, it becomes the final text
 
-                if attempt < self.max_retries - 1:
-                    pass
+            # 3. HANDLE CHART -> Show not supported message
+            elif step_type == "chart":
+                exec_result = {
+                    "step_number": step_number,
+                    "step_description": step.get("title", "Chart"),
+                    "step_type": "chart",
+                    "type": "text",
+                    "data": "Chart visualization is not supported in this version.",
+                    "description": "Skipped Chart",
+                }
+                all_results.append(exec_result)
+                yield json.dumps({"type": "step_result", "data": exec_result})
 
-                sql_query = self._fix_sql(sql_query, last_error)
+            # 4. UNKNOWN TYPES
+            else:
+                logger.warning(
+                    f"Unknown step type '{step_type}', skipping step {step_number}"
+                )
+                exec_result = {
+                    "step_number": step_number,
+                    "step_description": step.get("title", "Unknown"),
+                    "step_type": step_type,
+                    "type": "error",
+                    "data": f"Unknown step type: {step_type}",
+                }
+                all_results.append(exec_result)
+                yield json.dumps({"type": "step_result", "data": exec_result})
 
-        exec_result = {}
+        # Generate final summary if not already created by summary step
+        if not final_summary_text:
+            final_summary_text = self._format_final_response(user_query, all_results)
 
-        if df is not None:
-            # Convert to dict format compatible with frontend
-            data_dict = df.head(50).fillna("").astype(str).to_dict(orient="records")
+        formatted_code = "\n\n".join(all_sqls) if all_sqls else "-- No SQL executed"
 
-            exec_result = {
-                "step_number": step["step_number"],
-                "step_description": step["description"],
-                "step_type": "table",  # Force type table for SQL results
-                "type": "table",
-                "data": data_dict,
-                "columns": list(df.columns),
-                "total_rows": len(df),
-                "description": f"Retrieved {len(df)} records",
-            }
-        else:
-            # Failed after retries
-            exec_result = {
-                "step_number": step["step_number"],
-                "step_description": step["description"],
-                "step_type": "error",
-                "type": "error",
-                "data": f"Failed to execute query after {self.max_retries} attempts. Error: {last_error}",
-            }
-
-        all_results.append(exec_result)
-
-        yield json.dumps({"type": "step_result", "data": exec_result})
-
-        summary_text = self._format_final_response(user_query, all_results)
-
-        formatted_code = f"-- Step 1: Execute Query\n{final_sql_used if final_sql_used else sql_query}"
+        logger.info("Analysis complete, yielding final result")
 
         yield json.dumps(
             {
                 "type": "final_result",
                 "data": {
-                    "text": summary_text,
+                    "text": final_summary_text,
                     "steps": all_results,
                     "plan": plan,
                     "code": formatted_code,
@@ -306,13 +480,23 @@ class SQLAgent(BaseAgent):
         )
 
     def _generate_stats(self) -> str:
-        return "No stats available yet."
+        """Generate database statistics."""
+        try:
+            inspector = inspect(self.engine)
+            tables = inspector.get_table_names()
+            stats = f"Database contains {len(tables)} tables"
+            return stats
+        except Exception as e:
+            logger.error(f"Stats generation error: {e}")
+            return "No stats available"
 
     def _generate_preview(self) -> str:
+        """Generate database preview."""
         return "No Preview Available"
 
     def generate_dossier(self):
-        print("DEBUG: Schema: ", self.schema)
+        """Generate database dossier (intelligence report)."""
+        logger.info("Generating dossier")
         try:
             messages = [
                 {
@@ -329,5 +513,19 @@ class SQLAgent(BaseAgent):
             clean_response = response.replace("```json", "").replace("```", "").strip()
             return json_repair.loads(clean_response)
         except Exception as e:
-            print(f"Dossier generation error: {str(e)}")
+            logger.error(f"Dossier generation error: {str(e)}")
             raise Exception(f"Dossier generation failed: {str(e)}")
+
+    def invalidate_cache(self):
+        """Invalidate all cached data for this connection."""
+        self.cache_manager.invalidate_connection(self.connection_string)
+        logger.info("Cache invalidated for current connection")
+
+    def invalidate_query_cache(self):
+        """Invalidate only cached queries (useful after data modifications)."""
+        self.cache_manager.invalidate_all_queries(self.connection_string)
+        logger.info("Query cache invalidated for current connection")
+
+    def get_cache_stats(self) -> Dict[str, int]:
+        """Get cache statistics."""
+        return self.cache_manager.get_cache_stats()

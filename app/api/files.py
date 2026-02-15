@@ -88,6 +88,7 @@ def analyze_file(
 
         agent = ExcelDataAgent(file_path=full_path)
         dossier_data = agent.generate_dossier()
+        schema = agent.schema
 
     except Exception as e:
         print(f"AI Error: {e}")

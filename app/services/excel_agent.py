@@ -11,16 +11,15 @@ import json_repair
 
 from typing import Dict, Any, List
 
+# UPDATED: We now only need BRAIN_PROMPT and the others
 from app.core.prompts import (
     ANALYSIS_FORMAT_PROMPT,
-    ANALYSIS_SYSTEM_PROMPT,
     DOSSIER_PROMPT,
-    PLANNER_PROMPT,
-    ROUTER_PROMPT,
+    EXCEL_BRAIN_PROMPT,
     STEP_EXECUTOR_PROMPT,
 )
 from app.services.base_agent import BaseAgent
-from app.services.cache import DataCache
+from app.services.excel_agent_cache import DataCache
 from app.services.llm import call_llm
 
 dotenv.load_dotenv()
@@ -31,7 +30,7 @@ class ExcelDataAgent(BaseAgent):
         self.cache_manager = DataCache()
         self.df = self.cache_manager.get_data(file_path)
 
-        # Smart Schema
+        # Smart Schema Generation
         schema_parts = []
         for col in self.df.columns:
             dtype = self.df[col].dtype
@@ -46,50 +45,46 @@ class ExcelDataAgent(BaseAgent):
             schema_parts.append(f"- {col} ({dtype}): {sample}")
 
         self.schema = "\n".join(schema_parts)
+        print("SCHEMA: ", self.schema)
 
-    def _generate_plan(self, user_query: str, history_str: str = ""):
+    def _consult_brain(self, user_query: str, history_str: str = ""):
         messages = [
             {
                 "role": "system",
-                "content": PLANNER_PROMPT.format(
+                "content": BRAIN_PROMPT.format(
                     schema=self.schema,
                     history=history_str if history_str else "No previous conversation.",
                     query=user_query,
                 ),
             }
         ]
+
         try:
-            plan = call_llm(messages, temperature=0.0, timeout=60)
-            print("DEBUG: Generated Plan:")
-            print(plan)
+            response = call_llm(messages, temperature=0.1, timeout=60)
 
-            if "```" in plan:
-                plan = plan.replace("```json", "").replace("```", "").strip()
+            if "```" in response:
+                response = response.replace("```json", "").replace("```", "").strip()
 
-            plan = json_repair.loads(plan)
+            brain_output = json_repair.loads(response)
 
-            if "plan" not in plan or not isinstance(plan["plan"], list):
-                raise ValueError("Invalid plan structure")
+            if "intent" not in brain_output:
+                raise ValueError("Brain output missing 'intent' field")
 
-            for step in plan["plan"]:
-                if not all(k in step for k in ["step_number", "type", "description"]):
-                    raise ValueError(f"Step missing required fields: {step}")
-                if "depends_on" not in step:
-                    step["depends_on"] = []
+            return brain_output
 
-            return plan
         except Exception as e:
-            print(f"DEBUG: Plan generation failed: {e}")
+            print(f"DEBUG: Brain malfunction: {e}")
             return {
+                "intent": "DATA_ACTION",
+                "reasoning": "Fallback due to JSON parsing error.",
                 "plan": [
                     {
                         "step_number": 1,
                         "type": "table",
-                        "description": "Answer the user's query",
-                        "depends_on": [],
+                        "description": "Answer the user's query using the dataframe.",
+                        "chart_type": "none",
                     }
                 ],
-                "reasoning": "Fallback to simple single-step execution due to planning error.",
             }
 
     def _generate_step_code(
@@ -110,8 +105,13 @@ class ExcelDataAgent(BaseAgent):
                 prev_summary.append(f"Step {i}: {res['data'][:100]}")
 
         prev_context = (
-            "\n".join(prev_summary) if prev_summary else "this is the first step."
+            "\n".join(prev_summary) if prev_summary else "This is the first step."
         )
+
+        # Pass specific chart type guidance if available
+        step_desc = step["description"]
+        if step.get("chart_type") and step["chart_type"] != "none":
+            step_desc += f" (Create a {step['chart_type']} visualization)"
 
         messages = [
             {
@@ -121,7 +121,7 @@ class ExcelDataAgent(BaseAgent):
                     schema=self.schema,
                     query=user_query,
                     step_type=step["type"],
-                    step_description=step["description"],
+                    step_description=step_desc,
                     previous_results=prev_context,
                 ),
             }
@@ -138,11 +138,9 @@ class ExcelDataAgent(BaseAgent):
 
     def _sanitize_code(self, code_string: str) -> str:
         """Extract and validate Python code, checking for security violations"""
-        # Remove markdown code blocks if present
         match = re.search(r"```(?:python|py)?\n?(.*?)\n?```", code_string, re.DOTALL)
         clean_code = match.group(1).strip() if match else code_string.strip()
 
-        # Security Check - banned patterns
         banned_patterns = [
             (r"\bos\.", "os module access"),
             (r"\bsys\.", "sys module access"),
@@ -167,7 +165,6 @@ class ExcelDataAgent(BaseAgent):
                     f"Security violation: {description} is not allowed in generated code."
                 )
 
-        # Additional check: ensure code assigns to 'result'
         if "result" not in clean_code:
             print("WARNING: Generated code doesn't assign to 'result'")
 
@@ -179,17 +176,16 @@ class ExcelDataAgent(BaseAgent):
         stdout_capture = io.StringIO()
 
         try:
-            # Clear any existing plots
             plt.clf()
             plt.close("all")
 
-            # Execute code with stdout capture
             with contextlib.redirect_stdout(stdout_capture):
                 exec(clean_code, {"__builtins__": __builtins__}, local_scope)
 
             result = local_scope.get("result")
             result_description = local_scope.get("description", "")
             print(f"DEBUG: Query Description: {result_description}")
+
             # Check if a plot was created
             if plt.gcf().get_axes():
                 ax = plt.gca()
@@ -200,9 +196,7 @@ class ExcelDataAgent(BaseAgent):
                     f"Chart Title: {title}; X-Axis: {x_label}; Y-Axis: {y_label}"
                 )
 
-                # Ensure plots directory exists
                 os.makedirs("static/plots", exist_ok=True)
-
                 file_name = f"plot_{uuid.uuid4()}.png"
                 file_path = os.path.join("static", "plots", file_name)
                 plt.savefig(file_path, bbox_inches="tight", dpi=100)
@@ -215,7 +209,6 @@ class ExcelDataAgent(BaseAgent):
                     "description": description,
                 }
 
-            # DataFrame result
             if isinstance(result, pd.DataFrame):
                 if result.empty:
                     return {
@@ -230,7 +223,6 @@ class ExcelDataAgent(BaseAgent):
                     "description": result_description,
                 }
 
-            # Series result (convert to DataFrame)
             elif isinstance(result, pd.Series):
                 if result.empty:
                     return {"type": "text", "data": "Query returned an empty result."}
@@ -250,11 +242,9 @@ class ExcelDataAgent(BaseAgent):
                     "description": result_description,
                 }
 
-            # Direct result (string, number, dict, list, etc.)
             elif result is not None:
                 return {"type": "text", "data": str(result)}
 
-            # No result but stdout captured (print statements)
             else:
                 output = stdout_capture.getvalue().strip()
                 if output:
@@ -266,7 +256,6 @@ class ExcelDataAgent(BaseAgent):
                     }
 
         except Exception as e:
-            # Clean up plots on error
             plt.close("all")
             return {"type": "error", "data": f"Execution Error: {str(e)}"}
 
@@ -274,6 +263,8 @@ class ExcelDataAgent(BaseAgent):
         self, user_query: str, all_results: List[Dict[str, Any]]
     ) -> str:
         """Convert technical result into natural language response"""
+        # If the brain decided on general chat, this function might not be needed
+        # but we keep it for data action summaries.
 
         summary_parts = []
         for i, result in enumerate(all_results, 1):
@@ -305,19 +296,33 @@ class ExcelDataAgent(BaseAgent):
             return response
         except Exception as e:
             print(f"FORMAT ERROR: {e}")
-            # Fallback to simple response
             return f"Analysis complete. {combined_summary}"
 
     def answer(self, user_query: str, history_str: str = ""):
+        # 1. Consult the Brain (Unified Routing + Planning)
+        yield json.dumps(
+            {
+                "type": "step_start",
+                "step_number": 0,
+                "description": "Analyzing request and planning...",
+            }
+        )
 
-        intent = self._decide_intent(user_query, history_str)
+        brain_output = self._consult_brain(user_query, history_str)
+        intent = brain_output.get("intent", "DATA_ACTION")
 
+        # 2. Handle Non-Data Intents
         if intent == "GENERAL_CHAT":
+            reasoning = brain_output.get("reasoning", "I can help you with that.")
             yield json.dumps(
                 {
                     "type": "final_result",
                     "data": {
-                        "text": "I'm Consigliere, your AI data analyst. I can help you analyze your data by running queries, creating visualizations, and generating insights. What would you like to know about your dataset?",
+                        "text": (
+                            reasoning
+                            if len(reasoning) > 10
+                            else "I'm Consigliere, ready to analyze your data."
+                        ),
                         "steps": [],
                         "code": None,
                     },
@@ -330,7 +335,7 @@ class ExcelDataAgent(BaseAgent):
                 {
                     "type": "final_result",
                     "data": {
-                        "text": "I'm here to help with data analysis. Please keep our conversation professional and focused on your data needs.",
+                        "text": "I'm here to help with professional data analysis. Let's keep it focused on the data.",
                         "steps": [],
                         "code": None,
                     },
@@ -338,23 +343,16 @@ class ExcelDataAgent(BaseAgent):
             )
             return
 
-        # NOTE: It's better to yield standard JSON strings if your endpoint expects ndjson
-        yield json.dumps(
-            {
-                "type": "step_start",
-                "step_number": 0,
-                "description": "Planning analysis steps...",
-            }
-        )
+        # 3. Handle DATA_ACTION (Execute the Plan)
+        plan_steps = brain_output.get("plan", [])
+        print("DEBUG: planning steps: ", plan_steps)
 
-        plan = self._generate_plan(user_query, history_str)
-
-        if not plan or "plan" not in plan:
+        if not plan_steps:
             yield json.dumps(
                 {
                     "type": "final_result",
                     "data": {
-                        "text": "Sorry, I couldn't generate a valid plan. Please try rephrasing.",
+                        "text": "I understood your request but couldn't generate a valid execution plan. Could you try asking in a different way?",
                         "steps": [],
                         "code": None,
                     },
@@ -365,23 +363,23 @@ class ExcelDataAgent(BaseAgent):
         all_results = []
         all_code = []
 
-        for step in plan["plan"]:
+        for step in plan_steps:
             yield json.dumps(
                 {
                     "type": "step_start",
                     "step_number": step["step_number"],
-                    "description": step["description"],
+                    "description": step["title"],
                     "step_type": step["type"],
                 }
             )
 
+            # Generate Code
             raw_code = self._generate_step_code(user_query, step, all_results)
 
             try:
                 clean_code = self._sanitize_code(raw_code)
                 all_code.append(clean_code)
             except Exception as e:
-                # Handle Security Error
                 yield json.dumps(
                     {
                         "type": "step_result",
@@ -394,22 +392,26 @@ class ExcelDataAgent(BaseAgent):
                 )
                 continue
 
+            # Execute Code
             exec_result = self._execute_code(clean_code)
-
             exec_result["step_number"] = step["step_number"]
-            exec_result["step_description"] = step["description"]
+            exec_result["step_description"] = step["title"]
             exec_result["step_type"] = step["type"]
 
             all_results.append(exec_result)
 
             yield json.dumps({"type": "step_result", "data": exec_result})
 
+        # 4. Final Summary
         summary = self._format_final_response(user_query, all_results)
-        code = ""
-        for i, step in enumerate(plan["plan"]):
-            code += f"# Step {step['step_number']}: {step['description']}\n"
-            code += all_code[i] + "\n\n"
-            code += "=" * 50 + "\n\n"
+
+        # Construct full code log
+        code_log = ""
+        for i, step in enumerate(plan_steps):
+            code_log += f"# Step {step['step_number']}: {step['description']}\n"
+            if i < len(all_code):
+                code_log += all_code[i] + "\n\n"
+            code_log += "=" * 50 + "\n\n"
 
         yield json.dumps(
             {
@@ -417,8 +419,8 @@ class ExcelDataAgent(BaseAgent):
                 "data": {
                     "text": summary,
                     "steps": all_results,
-                    "plan": plan,
-                    "code": code,
+                    "plan": brain_output,  # Return full brain output context
+                    "code": code_log,
                 },
             }
         )
@@ -426,11 +428,9 @@ class ExcelDataAgent(BaseAgent):
     def _calculate_stats(self) -> str:
         """Run tactical scan of dataframe to extract key metrics"""
         stats = []
-
         stats.append(f"Total Records: {len(self.df):,}")
         stats.append(f"Total Columns: {len(self.df.columns)}")
 
-        # Date ranges
         for col in self.df.select_dtypes(include=["datetime", "datetimetz"]).columns:
             try:
                 start = self.df[col].min()
@@ -439,7 +439,6 @@ class ExcelDataAgent(BaseAgent):
             except:
                 pass
 
-        # Categorical columns - top values
         for col in self.df.select_dtypes(include=["object", "category"]).columns[:5]:
             try:
                 unique_count = self.df[col].nunique()
@@ -450,7 +449,6 @@ class ExcelDataAgent(BaseAgent):
             except:
                 pass
 
-        # Numerical columns - summary stats
         for col in self.df.select_dtypes(include=["number"]).columns[:5]:
             try:
                 avg = self.df[col].mean()
@@ -465,7 +463,6 @@ class ExcelDataAgent(BaseAgent):
     def generate_dossier(self) -> dict:
         """Generate initial briefing about the dataset"""
         stats_summary = self._calculate_stats()
-        # TODO: REPLACE THAT WITH DATA SHADOWING OF FIRST 5 ROWS
         preview = self.df.head(5).to_string()
 
         messages = [
@@ -483,10 +480,6 @@ class ExcelDataAgent(BaseAgent):
         try:
             response_text = call_llm(messages, temperature=0.4, timeout=60)
 
-            print("DEBUG: Dossier Response:")
-            print(response_text[:500])  # Print first 500 chars
-
-            # Clean markdown if present
             if "```" in response_text:
                 response_text = (
                     response_text.replace("```json", "").replace("```", "").strip()
@@ -495,34 +488,18 @@ class ExcelDataAgent(BaseAgent):
             parsed_json = json_repair.loads(response_text)
 
             if isinstance(parsed_json, dict):
-                # Validate required fields
-                required_fields = [
-                    "briefing",
-                    "key_entities",
-                    "recommended_actions",
-                ]
+                required_fields = ["briefing", "key_entities", "recommended_actions"]
                 for field in required_fields:
                     if field not in parsed_json:
-                        print(f"WARNING: Missing field '{field}' in dossier")
-                        parsed_json[field] = (
-                            []
-                            if field in ["key_entities", "recommended_actions"]
-                            else "Unknown"
-                        )
-
+                        parsed_json[field] = [] if field != "briefing" else "Unknown"
                 return parsed_json
             else:
-                print(f"WARNING: Dossier was not a dict: {type(parsed_json)}")
                 raise ValueError("Dossier output was not a dictionary")
 
         except Exception as e:
             print(f"Error generating dossier: {e}")
             return {
-                "briefing": f"I analyzed your data ({len(self.df):,} rows, {len(self.df.columns)} columns) but couldn't generate a full briefing. I'm ready to answer your questions!",
+                "briefing": f"I analyzed your data ({len(self.df):,} rows).",
                 "key_entities": list(self.df.columns[:5]),
-                "recommended_actions": [
-                    "Show me the first 10 rows",
-                    "What columns are available?",
-                    f"How many rows are in this dataset?",
-                ],
+                "recommended_actions": ["Show me the data", "Count rows"],
             }
