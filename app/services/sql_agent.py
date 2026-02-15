@@ -2,6 +2,9 @@ import json
 import json_repair
 import pandas as pd
 import re
+import os
+import uuid
+import matplotlib.pyplot as plt
 from sqlalchemy import create_engine, inspect, text
 from typing import List, Dict, Any
 import logging
@@ -18,6 +21,7 @@ from app.core.prompts import (
     STRICT_SQL_RULES,
     SQL_FIX_PROMPT,
     SUMMARY_SYNTHESIS_PROMPT,
+    CHART_GENERATOR_PROMPT,
 )
 
 # Set up logging
@@ -36,6 +40,9 @@ class SQLAgent(BaseAgent):
         self.target_db = connection_string.split(":")[0]
         self.max_retries = 3
         self.result_limit = 50  # Configurable result limit
+
+        # Ensure plots directory exists
+        os.makedirs("static/plots", exist_ok=True)
 
         # Try to get schema from cache
         cached_schema = self.cache_manager.get_schema(connection_string)
@@ -134,6 +141,114 @@ class SQLAgent(BaseAgent):
                 return df
             return pd.DataFrame()
 
+    def _generate_chart_code(
+        self, step: Dict[str, Any], df: pd.DataFrame, user_query: str
+    ) -> str:
+        """Generate Python code for creating a chart from the data."""
+        chart_type = step.get("chart_type", "bar")
+
+        # Prepare data preview for the LLM
+        data_info = {
+            "columns": list(df.columns),
+            "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            "shape": df.shape,
+            "sample": df.head(5).to_dict(orient="records"),
+        }
+
+        messages = [
+            {
+                "role": "system",
+                "content": CHART_GENERATOR_PROMPT.format(
+                    step_description=step["description"],
+                    chart_type=chart_type,
+                    data_info=json.dumps(data_info, indent=2),
+                    user_query=user_query,
+                ),
+            }
+        ]
+
+        try:
+            code = call_llm(messages, temperature=0.0, timeout=30)
+            return code
+        except Exception as e:
+            logger.error(f"Chart code generation failed: {e}")
+            return None
+
+    def _sanitize_chart_code(self, code_string: str) -> str:
+        """Extract and validate Python chart code."""
+        match = re.search(r"```(?:python|py)?\n?(.*?)\n?```", code_string, re.DOTALL)
+        clean_code = match.group(1).strip() if match else code_string.strip()
+
+        # Security checks
+        banned_patterns = [
+            (r"\bos\.", "os module access"),
+            (r"\bsys\.", "sys module access"),
+            (r"\bsubprocess\.", "subprocess module"),
+            (r"\bopen\s*\(", "file operations"),
+            (r"\b__import__\s*\(", "dynamic imports"),
+            (r"\bexec\s*\(", "exec function"),
+            (r"\beval\s*\(", "eval function"),
+        ]
+
+        for pattern, description in banned_patterns:
+            if re.search(pattern, clean_code, re.IGNORECASE):
+                raise Exception(
+                    f"Security violation: {description} is not allowed in generated code."
+                )
+
+        return clean_code
+
+    def _execute_chart_code(self, clean_code: str, df: pd.DataFrame) -> Dict[str, Any]:
+        """Execute chart generation code and return image path."""
+        local_scope = {"df": df, "pd": pd, "plt": plt}
+
+        try:
+            # Clear any existing plots
+            plt.clf()
+            plt.close("all")
+
+            # Apply dark theme
+            plt.style.use("dark_background")
+
+            # Execute the chart code
+            exec(clean_code, {"__builtins__": __builtins__}, local_scope)
+
+            # Check if a plot was created
+            if plt.gcf().get_axes():
+                ax = plt.gca()
+                title = ax.get_title() or "Chart"
+                x_label = ax.get_xlabel() or "X-axis"
+                y_label = ax.get_ylabel() or "Y-axis"
+                description = (
+                    f"Chart Title: {title}; X-Axis: {x_label}; Y-Axis: {y_label}"
+                )
+
+                # Save the chart
+                file_name = f"plot_{uuid.uuid4()}.png"
+                file_path = os.path.join("static", "plots", file_name)
+                plt.savefig(file_path, bbox_inches="tight", dpi=100)
+                plt.close("all")
+
+                return {
+                    "type": "image",
+                    "data": f"/static/plots/{file_name}",
+                    "mime": "image/png",
+                    "description": description,
+                }
+            else:
+                return {
+                    "type": "error",
+                    "data": "Chart code executed but no plot was created.",
+                }
+
+        except Exception as e:
+            plt.close("all")
+            logger.error(f"Chart execution error: {e}")
+            return {
+                "type": "error",
+                "data": f"Chart generation failed: {str(e)}",
+            }
+
     def _format_final_response(
         self, user_query: str, all_results: List[Dict[str, Any]]
     ) -> str:
@@ -144,6 +259,10 @@ class SQLAgent(BaseAgent):
                 summary_parts.append(
                     f"Step {i}: Retrieved {result.get('total_rows', 0)} rows. "
                     f"Columns: {', '.join(result.get('columns', []))}"
+                )
+            elif result["type"] == "image":
+                summary_parts.append(
+                    f"Step {i}: Created visualization - {result.get('description', '')}"
                 )
             elif result["type"] == "error":
                 summary_parts.append(f"Step {i}: Error - {result.get('data', '')}")
@@ -277,7 +396,7 @@ class SQLAgent(BaseAgent):
             exec_result = {
                 "step_number": step["step_number"],
                 "step_description": step["title"],
-                "step_type": step.get("type", "table"),  # Use actual type from plan
+                "step_type": step.get("type", "table"),
                 "type": "table",
                 "data": data_dict,
                 "columns": list(df.columns),
@@ -302,6 +421,90 @@ class SQLAgent(BaseAgent):
 
         return exec_result
 
+    def _execute_chart_step(
+        self, step: Dict[str, Any], all_sqls: List[str], user_query: str
+    ) -> Dict[str, Any]:
+        """Execute a chart step - first get data, then visualize it."""
+        current_query = step["description"]
+        sql_query = self._generate_sql(current_query)
+        df = None
+        last_error = None
+        current_sql_used = ""
+
+        # First, execute SQL to get data
+        for attempt in range(self.max_retries):
+            if not self._sanitize_sql(sql_query):
+                return {
+                    "step_number": step["step_number"],
+                    "step_description": step["title"],
+                    "step_type": "error",
+                    "type": "error",
+                    "data": "Security Alert: Prohibited SQL commands detected.",
+                }
+
+            try:
+                df = self._execute_code(sql_query)
+                current_sql_used = sql_query
+                logger.info(
+                    f"Step {step['step_number']}: Data retrieved for chart, {len(df)} rows"
+                )
+                break
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(
+                    f"SQL Execution failed (Attempt {attempt+1}/{self.max_retries}): {last_error}"
+                )
+
+                if attempt < self.max_retries - 1:
+                    sql_query = self._fix_sql(sql_query, last_error)
+
+        if df is None or df.empty:
+            return {
+                "step_number": step["step_number"],
+                "step_description": step["title"],
+                "step_type": "error",
+                "type": "error",
+                "data": f"Failed to retrieve data for chart. Error: {last_error}",
+            }
+
+        # Generate chart code
+        chart_code = self._generate_chart_code(step, df, user_query)
+        if not chart_code:
+            return {
+                "step_number": step["step_number"],
+                "step_description": step["title"],
+                "step_type": "error",
+                "type": "error",
+                "data": "Failed to generate chart code.",
+            }
+
+        # Sanitize and execute chart code
+        try:
+            clean_code = self._sanitize_chart_code(chart_code)
+            chart_result = self._execute_chart_code(clean_code, df)
+
+            chart_result["step_number"] = step["step_number"]
+            chart_result["step_description"] = step["title"]
+            chart_result["step_type"] = "chart"
+            chart_result["query"] = current_sql_used
+
+            if current_sql_used:
+                all_sqls.append(
+                    f"-- Step {step['step_number']}: {step['description']}\n{current_sql_used}\n\n# Chart Code:\n{clean_code}"
+                )
+
+            return chart_result
+
+        except Exception as e:
+            logger.error(f"Chart generation error: {e}")
+            return {
+                "step_number": step["step_number"],
+                "step_description": step["title"],
+                "step_type": "error",
+                "type": "error",
+                "data": f"Chart generation failed: {str(e)}",
+            }
+
     def _execute_summary_step(
         self, step: Dict[str, Any], user_query: str, all_results: List[Dict[str, Any]]
     ) -> str:
@@ -317,6 +520,11 @@ class SQLAgent(BaseAgent):
                 context_str += (
                     f"Data Sample (Top 5 rows): {str(res.get('data', [])[:5])}\n\n"
                 )
+            elif res["type"] == "image":
+                context_str += (
+                    f"Step {res['step_number']} ({res['step_description']}):\n"
+                )
+                context_str += f"Chart Created: {res.get('description', '')}\n\n"
             elif res["type"] == "error":
                 context_str += f"Step {res['step_number']} Error: {res.get('data')}\n\n"
 
@@ -407,7 +615,7 @@ class SQLAgent(BaseAgent):
             step_type = step.get("type", "table")
             step_number = step.get("step_number", 0)
 
-            # Yield step_start for all types except summary (to hide from UI)
+            # Yield step_start for all types except summary
             if step_type != "summary":
                 yield json.dumps(
                     {
@@ -424,25 +632,17 @@ class SQLAgent(BaseAgent):
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
-            # 2. HANDLE SUMMARY -> Execute LLM Synthesis
+            # 2. HANDLE CHART -> Execute SQL + Generate Visualization
+            elif step_type == "chart":
+                exec_result = self._execute_chart_step(step, all_sqls, user_query)
+                all_results.append(exec_result)
+                yield json.dumps({"type": "step_result", "data": exec_result})
+
+            # 3. HANDLE SUMMARY -> Execute LLM Synthesis
             elif step_type == "summary":
                 final_summary_text = self._execute_summary_step(
                     step, user_query, all_results
                 )
-                # Summary is not yielded as a step_result, it becomes the final text
-
-            # 3. HANDLE CHART -> Show not supported message
-            elif step_type == "chart":
-                exec_result = {
-                    "step_number": step_number,
-                    "step_description": step.get("title", "Chart"),
-                    "step_type": "chart",
-                    "type": "text",
-                    "data": "Chart visualization is not supported in this version.",
-                    "description": "Skipped Chart",
-                }
-                all_results.append(exec_result)
-                yield json.dumps({"type": "step_result", "data": exec_result})
 
             # 4. UNKNOWN TYPES
             else:

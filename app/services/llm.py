@@ -11,7 +11,10 @@ litellm.set_verbose = False
 litellm.suppress_debug_info = True
 
 MODEL_NAME = os.getenv("MODEL_NAME", "ollama/llama2:7b")  # default to local
+
 # MODEL_NAME = "ollama/llama2:7b"
+if MODEL_NAME == "ollama/llama2:7b":
+    litellm.api_base = "http://localhost:11434"
 
 
 @retry(
