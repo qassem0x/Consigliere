@@ -51,7 +51,7 @@ class ExcelDataAgent(BaseAgent):
         messages = [
             {
                 "role": "system",
-                "content": BRAIN_PROMPT.format(
+                "content": EXCEL_BRAIN_PROMPT.format(
                     schema=self.schema,
                     history=history_str if history_str else "No previous conversation.",
                     query=user_query,

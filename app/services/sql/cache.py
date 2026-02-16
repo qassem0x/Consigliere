@@ -14,7 +14,7 @@ class SQLAgentCache:
 
     CONNECTION_TTL = 3600  # 1 hour for connections
     SCHEMA_TTL = 1800  # 30 minutes for schema
-    QUERY_TTL = 300  # 5 minutes for query results
+    QUERY_TTL = 600  # 10 minutes for query results
 
     def __new__(cls):
         if cls._instance is None:

@@ -37,6 +37,7 @@ export const DashboardPage: React.FC = () => {
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     // --- SCROLL HANDLING ---
     useEffect(() => {
@@ -175,6 +176,13 @@ export const DashboardPage: React.FC = () => {
     const processMessage = useCallback(async (text: string) => {
         if (!text.trim() || !activeChatId) return;
 
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         const userMsg: Message = { role: 'user', content: text };
         setMessages(prev => [...prev, userMsg]);
         setIsLoading(true);
@@ -186,7 +194,8 @@ export const DashboardPage: React.FC = () => {
             content: '',
             steps: [],
             plan: null,
-            related_code: null
+            related_code: null,
+            streamingStatus: 'processing'
         };
         setMessages(prev => [...prev, assistantMsg]);
 
@@ -197,7 +206,8 @@ export const DashboardPage: React.FC = () => {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
-                body: JSON.stringify({ content: text })
+                body: JSON.stringify({ content: text }),
+                signal: controller.signal
             });
 
             if (!response.ok) throw new Error('Failed to send message');
@@ -207,10 +217,20 @@ export const DashboardPage: React.FC = () => {
             if (!reader) throw new Error('No response body');
 
             let buffer = '';
+            let receivedFinalResult = false;
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
+
+                if (controller.signal.aborted) {
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === assistantMsgId
+                            ? { ...msg, streamingStatus: 'cancelled' as const }
+                            : msg
+                    ));
+                    break;
+                }
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
@@ -225,7 +245,7 @@ export const DashboardPage: React.FC = () => {
                         if (chunk.type === 'step_start') {
                             setMessages(prev => prev.map(msg =>
                                 msg.id === assistantMsgId
-                                    ? { ...msg, content: msg.content || `${chunk.description}...` }
+                                    ? { ...msg, content: msg.content || `${chunk.description}...`, streamingStatus: 'planning' as const }
                                     : msg
                             ));
                         }
@@ -237,6 +257,7 @@ export const DashboardPage: React.FC = () => {
                             ));
                         }
                         else if (chunk.type === 'final_result') {
+                            receivedFinalResult = true;
                             setMessages(prev => prev.map(msg =>
                                 msg.id === assistantMsgId
                                     ? {
@@ -244,7 +265,8 @@ export const DashboardPage: React.FC = () => {
                                         content: chunk.data.text,
                                         steps: chunk.data.steps || [],
                                         plan: chunk.data.plan || null,
-                                        related_code: chunk.data.code ? { type: 'python', code: chunk.data.code } : null
+                                        related_code: chunk.data.code ? { type: 'python', code: chunk.data.code } : null,
+                                        streamingStatus: 'complete' as const
                                     }
                                     : msg
                             ));
@@ -256,7 +278,13 @@ export const DashboardPage: React.FC = () => {
                         }
                         else if (chunk.type === 'error') {
                             setMessages(prev => prev.map(msg =>
-                                msg.id === assistantMsgId ? { ...msg, content: `**Error:** ${chunk.message}` } : msg
+                                msg.id === assistantMsgId
+                                    ? {
+                                        ...msg,
+                                        content: `**Error:** ${chunk.message}`,
+                                        streamingStatus: chunk.error_type === 'user_cancelled' ? 'cancelled' as const : 'error' as const
+                                    }
+                                    : msg
                             ));
                         }
                     } catch (parseError) {
@@ -264,15 +292,40 @@ export const DashboardPage: React.FC = () => {
                     }
                 }
             }
-        } catch (error) {
-            console.error("Message processing failed:", error);
-            setMessages(prev => prev.map(msg =>
-                msg.id === assistantMsgId ? { ...msg, content: '**Critical Error:** System failed to process request.' } : msg
-            ));
+
+            if (!receivedFinalResult && !controller.signal.aborted) {
+                setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMsgId
+                        ? { ...msg, content: '**Error:** Response incomplete - server terminated early.', streamingStatus: 'error' as const }
+                        : msg
+                ));
+            }
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMsgId
+                        ? { ...msg, streamingStatus: 'cancelled' as const }
+                        : msg
+                ));
+            } else {
+                console.error("Message processing failed:", error);
+                setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMsgId
+                        ? { ...msg, content: '**Critical Error:** System failed to process request.', streamingStatus: 'error' as const }
+                        : msg
+                ));
+            }
         } finally {
             setIsLoading(false);
+            abortControllerRef.current = null;
         }
     }, [activeChatId]);
+
+    const handleCancelRequest = useCallback(() => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+    }, []);
 
     const handleSendMessage = useCallback(() => {
         const messageText = input.trim();
@@ -404,6 +457,7 @@ export const DashboardPage: React.FC = () => {
                             onInputChange={setInput}
                             onSendMessage={handleSendMessage}
                             onActionClick={handleRecommendedAction}
+                            onCancel={handleCancelRequest}
                         />
                     )}
 

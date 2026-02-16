@@ -33,8 +33,9 @@ export const BackgroundDecor: React.FC = () => {
         
         <div className="absolute inset-0 bg-gradient-to-b from-[#0f0f10] via-[#0f0f10] to-black"></div>
 
+        {/* Grid Layer - Dots removed */}
         <div 
-          className="absolute inset-0 opacity-[0.07] animate-grid-scroll"
+          className="absolute inset-0 opacity-[0.2] animate-grid-scroll"
           style={{
             backgroundImage: `
               linear-gradient(to right, #888 1px, transparent 1px),
@@ -46,14 +47,7 @@ export const BackgroundDecor: React.FC = () => {
           }}
         />
 
-        <div 
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `radial-gradient(#fff 1px, transparent 1px)`,
-            backgroundSize: '20px 20px',
-          }}
-        />
-
+        {/* Glowing Cursor Follower */}
         <div 
           className="absolute w-[800px] h-[800px] rounded-full opacity-20 bg-rose-500/30 blur-[100px] transition-transform duration-75 ease-out will-change-transform"
           style={{ 
@@ -61,6 +55,7 @@ export const BackgroundDecor: React.FC = () => {
           }}
         />
 
+        {/* Ambient Blobs */}
         <div 
           className="absolute -top-[20%] -left-[10%] w-[50vw] h-[50vw] bg-rose-500/10 blur-[120px] rounded-full"
           style={{ animation: 'float-slow 25s ease-in-out infinite' }}

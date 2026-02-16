@@ -60,6 +60,8 @@ class SQLAgent(BaseAgent):
                 f"SQLAgent initialized with new schema: {len(self.schema)} chars"
             )
 
+        self.query_processor = QueryProcessor(self.schema)
+
     def _generate_sql(self, user_query: str) -> str:
         """Generate SQL query from natural language."""
         system_content = (
@@ -296,7 +298,7 @@ class SQLAgent(BaseAgent):
                 "content": SQL_BRAIN_PROMPT.format(
                     schema=self.schema,
                     history=history_str if history_str else "No previous conversation.",
-                    query=user_query,
+                    user_query=user_query,
                 ),
             }
         ]
@@ -550,6 +552,9 @@ class SQLAgent(BaseAgent):
         """Main method to answer user queries."""
         brain_output = self._consult_brain(user_query, history_str)
         intent = brain_output.get("intent", "DATA_ACTION")
+        enhanced_query = brain_output.get("enhanced_query", user_query)
+
+        print("DEGUG:", brain_output)
 
         # Handle non-data intents
         if intent == "GENERAL_CHAT":
@@ -590,7 +595,7 @@ class SQLAgent(BaseAgent):
                     "step_number": 1,
                     "type": "table",
                     "title": "Direct Query",
-                    "description": user_query,
+                    "description": enhanced_query,
                     "chart_type": "none",
                 }
             ]
@@ -634,14 +639,14 @@ class SQLAgent(BaseAgent):
 
             # 2. HANDLE CHART -> Execute SQL + Generate Visualization
             elif step_type == "chart":
-                exec_result = self._execute_chart_step(step, all_sqls, user_query)
+                exec_result = self._execute_chart_step(step, all_sqls, enhanced_query)
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
             # 3. HANDLE SUMMARY -> Execute LLM Synthesis
             elif step_type == "summary":
                 final_summary_text = self._execute_summary_step(
-                    step, user_query, all_results
+                    step, enhanced_query, all_results
                 )
 
             # 4. UNKNOWN TYPES
@@ -661,7 +666,9 @@ class SQLAgent(BaseAgent):
 
         # Generate final summary if not already created by summary step
         if not final_summary_text:
-            final_summary_text = self._format_final_response(user_query, all_results)
+            final_summary_text = self._format_final_response(
+                enhanced_query, all_results
+            )
 
         formatted_code = "\n\n".join(all_sqls) if all_sqls else "-- No SQL executed"
 

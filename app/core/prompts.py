@@ -103,6 +103,7 @@ Rules:
 5. Add GROUP BY for aggregations
 6. Default LIMIT 1000
 7. If column missing, check schema or return error
+8.Only return columns that provide meaningful, human-readable information. Omit internal identifiers, primary/foreign keys, and other technical fields unless explicitly requested.
 
 Return SQL only (no markdown).
 """
@@ -226,4 +227,51 @@ Notes:
 - Set title, labels, legend for charts
 
 Return code only.
+"""
+
+SQL_BRAIN_PROMPT = """
+You are an AI assistant for SQL databases. Your task is to:
+
+1️⃣ **Understand and clean the user's query**  
+   - Normalize messy input
+   - Extract intent, entities, metrics, filters, aggregation level, time context
+   - Map fuzzy terms to actual schema tables/columns
+   - Return an "enhanced_query" string
+
+2️⃣ **Design the SQL analysis workflow (plan)**  
+   - Decide which steps are needed: metric, table, chart, summary
+   - Each step should be actionable with clear descriptions for SQL/code generation
+   - Follow best practices: no redundant charts, CTEs over nested subqueries, joins correct
+   - Use emojis for titles where relevant
+   - Summary step must always exist as final step
+   - Output JSON only
+
+Database Schema:
+{schema}
+
+User Query: "{user_query}"
+History: "{history}"  # optional previous context
+
+Rules:
+- Charts: bar, line, pie, scatter; avoid >7 slices; line charts for sequential data
+- SQL: SELECT only; obey STRICT_SQL_RULES
+- Enhance clarity: time periods, limits, aggregation hints
+- Output must be fully JSON-parsable
+
+Return JSON with keys:
+{{
+  "enhanced_query": "Clean, structured query",
+  "intent": "GENERAL_CHAT | DATA_ACTION | OFFENSIVE",
+  "reasoning": "Why these steps were chosen",
+  "plan": [
+    {{
+      "step_number": 1,
+      "type": "metric|table|chart|summary",
+      "title": "💰 Title",
+      "description": "SQL instruction / what to compute",
+      "chart_type": "bar|line|pie|scatter|none"
+    }},
+    ...
+  ]
+}}
 """

@@ -18,6 +18,7 @@ interface ChatViewProps {
     onInputChange: (value: string) => void;
     onSendMessage: () => void;
     onActionClick: (action: string) => void;
+    onCancel?: () => void;
 }
 
 export const MessageTable: React.FC<{ data: any[]; compact?: boolean }> = memo(({ data, compact }) => {
@@ -129,7 +130,8 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
     scrollRef,
     onInputChange,
     onSendMessage,
-    onActionClick
+    onActionClick,
+    onCancel
 }) => {
     const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
         messages[messages.length - 1]?.id || null
@@ -211,16 +213,22 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
                                 </div>
                             </div>
                             <button
-                                onClick={onSendMessage}
-                                disabled={!input.trim() || isLoading}
+                                onClick={isLoading ? onCancel : onSendMessage}
+                                disabled={!input.trim() && !isLoading}
                                 className={cn(
                                     "p-3 rounded-lg transition-all",
-                                    input.trim() && !isLoading
-                                        ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                                        : "bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
+                                    isLoading
+                                        ? "bg-red-600 hover:bg-red-700 text-white"
+                                        : input.trim()
+                                            ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                                            : "bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
                                 )}
                             >
-                                <Send size={16} />
+                                {isLoading ? (
+                                    <span className="text-xs font-medium">Cancel</span>
+                                ) : (
+                                    <Send size={16} />
+                                )}
                             </button>
                         </div>
                         <div className="px-1 py-1">

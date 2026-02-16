@@ -12,8 +12,9 @@ litellm.suppress_debug_info = True
 
 MODEL_NAME = os.getenv("MODEL_NAME", "ollama/llama2:7b")  # default to local
 
-# MODEL_NAME = "ollama/llama2:7b"
-if MODEL_NAME == "ollama/llama2:7b":
+MODEL_NAME = "ollama/llama2:7b"
+
+if MODEL_NAME.startswith("ollama"):
     litellm.api_base = "http://localhost:11434"
 
 
@@ -40,3 +41,7 @@ def call_llm(messages: list, temperature: float = 0.0, timeout: int = 60) -> str
     except Exception as e:
         print(f"LLM ERROR: {e}")
         raise Exception(f"LLM service error: {str(e)}")
+
+
+if __name__ == "__main__":
+    print(call_llm([{"role": "user", "content": "what is 7+8? and why"}]))

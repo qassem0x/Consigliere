@@ -52,8 +52,7 @@ export interface Message {
         type: string;
         code: string;
     } | null;
-    // New streaming status fields
-    streamingStatus?: 'planning' | 'executing' | 'complete' | 'error';
+    streamingStatus?: 'planning' | 'processing' | 'complete' | 'error' | 'cancelled';
     currentStep?: number;
 }
 

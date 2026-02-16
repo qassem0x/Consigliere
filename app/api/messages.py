@@ -137,14 +137,14 @@ async def send_message(
 
     async def _event_generator():
         final_response = {"text": "", "steps": [], "code": None}
+        generation_completed = False
 
         try:
             for chunk in agent.answer(msg_data.content, history_str):
-                yield chunk + "\n"
-
                 try:
                     chunk_data = json.loads(chunk)
                     if chunk_data.get("type") == "final_result":
+                        generation_completed = True
                         data = chunk_data.get("data", {})
                         final_response["text"] = data.get("text", "")
                         final_response["steps"] = data.get("steps", [])
@@ -153,29 +153,47 @@ async def send_message(
                 except Exception as chunk_err:
                     print(f"DEBUG: Failed to parse chunk: {chunk_err}")
 
+                yield chunk + "\n"
+
                 # Tiny sleep to ensure the loop yields control
                 await asyncio.sleep(0.01)
 
-            with SessionLocal() as db_session:
-                assistant_msg = Message(
-                    chat_id=chat_id,
-                    role="assistant",
-                    content=json.dumps(
-                        {
-                            "text": final_response["text"],
-                            "steps": final_response["steps"],
+            if generation_completed:
+                with SessionLocal() as db_session:
+                    assistant_msg = Message(
+                        chat_id=chat_id,
+                        role="assistant",
+                        content=json.dumps(
+                            {
+                                "text": final_response["text"],
+                                "steps": final_response["steps"],
+                                "code": final_response["code"],
+                            }
+                        ),
+                        related_code={
+                            "type": code_type,
                             "code": final_response["code"],
-                        }
-                    ),
-                    related_code={"type": code_type, "code": final_response["code"]},
-                    steps=final_response["steps"],
-                )
-                db_session.add(assistant_msg)
-                db_session.commit()
-                db_session.refresh(assistant_msg)
+                        },
+                        steps=final_response["steps"],
+                    )
+                    db_session.add(assistant_msg)
+                    db_session.commit()
+                    db_session.refresh(assistant_msg)
 
-                yield json.dumps({"type": "final", "message_id": str(assistant_msg.id)})
+                    yield json.dumps(
+                        {"type": "final", "message_id": str(assistant_msg.id)}
+                    )
 
+        except asyncio.CancelledError:
+            print(f"DEBUG: Request cancelled by client for chat {chat_id}")
+            yield json.dumps(
+                {
+                    "type": "error",
+                    "error_type": "user_cancelled",
+                    "message": "Request cancelled by user",
+                }
+            )
+            raise
         except Exception as e:
             print(
                 f"DEBUG: Exception in event generator for chat {chat_id}: {type(e).__name__}: {str(e)}"
@@ -183,6 +201,13 @@ async def send_message(
             import traceback
 
             traceback.print_exc()
-            yield json.dumps({"type": "error", "message": str(e)})
+            if not generation_completed:
+                yield json.dumps(
+                    {
+                        "type": "error",
+                        "error_type": "incomplete_generation",
+                        "message": str(e),
+                    }
+                )
 
     return StreamingResponse(_event_generator(), media_type="application/x-ndjson")
