@@ -72,4 +72,5 @@ todo
 frontend/node_modules/
 node_modules/
 
-dev_run.bash
+./dev_run.bash
+.plan
