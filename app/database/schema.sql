@@ -75,6 +75,14 @@ CREATE TABLE messages (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE chat_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    zero_leaks_mode BOOLEAN DEFAULT FALSE,
+    max_row_limit BOOLEAN DEFAULT 100,
+    CONSTRAINT unique_chat_settings UNIQUE (chat_id), 
+) 
+
 -- Indexes (Performance)
 CREATE INDEX idx_files_user_id ON files(user_id);
 CREATE INDEX idx_connections_user_id ON connections(user_id);

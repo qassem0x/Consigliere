@@ -174,8 +174,16 @@ class Chat(Base):
     file = relationship("File", back_populates="chats")
     connection = relationship("Connection", back_populates="chats")
     dossier = relationship("Dossier", back_populates="chats")
+
     messages = relationship(
         "Message", back_populates="chat", cascade="all, delete-orphan"
+    )
+
+    settings = relationship(
+        "ChatSettings",
+        uselist=False,
+        back_populates="chat",
+        cascade="all, delete-orphan",
     )
 
 
@@ -201,3 +209,22 @@ class Message(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     chat = relationship("Chat", back_populates="messages")
+
+
+class ChatSettings(Base):
+    __tablename__ = "chat_settings"
+
+    id = Column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
+    )
+    chat_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("chats.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,  # Ensures One-to-One relationship
+    )
+
+    zero_leaks_mode = Column(Boolean, server_default=text("false"))
+    max_row_limit = Column(Integer, server_default=text("100"))
+
+    chat = relationship("Chat", back_populates="settings")

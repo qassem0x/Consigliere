@@ -7,6 +7,8 @@ from uuid import UUID
 class ChatCreate(BaseModel):
     title: Optional[str] = None
     file_id: UUID
+    zero_leaks_mode: Optional[bool] = False
+    max_row_limit: Optional[int] = 100
 
 
 class FileInfo(BaseModel):

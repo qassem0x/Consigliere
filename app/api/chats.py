@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.models.db_models import User
 from app.models.chats import ChatCreate, ChatOut
-from app.models.db_models import Chat, File
+from app.models.db_models import Chat, File, ChatSettings
 from app.core.database import get_db
 
 router = APIRouter()
@@ -22,12 +22,19 @@ def create_chat(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # NOTE: Title left as None, for default naming i'll do it in the frontend side
-
-    new_chat = Chat(file_id=chat.file_id, user_id=user.id)
-
     try:
+
+        new_chat = Chat(file_id=chat.file_id, user_id=user.id)
         db.add(new_chat)
+        db.flush()
+
+        new_settings = ChatSettings(
+            chat_id=new_chat.id,
+            zero_leaks_mode=chat.zero_leaks_mode,
+            max_row_limit=chat.max_row_limit,
+        )
+        db.add(new_settings)
+
         db.commit()
         db.refresh(new_chat)
         return new_chat
@@ -62,6 +69,12 @@ def get_my_chats(
                 if chat.file
                 else None
             ),
+            "settings": {
+                "zero_leaks_mode": (
+                    chat.settings.zero_leaks_mode if chat.settings else False
+                ),
+                "max_row_limit": chat.settings.max_row_limit if chat.settings else 100,
+            },
         }
         result.append(chat_data)
 
@@ -108,18 +121,52 @@ def delete_chat(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
+    target_connection = chat.connection
+    target_file = chat.file
+
     db.delete(chat)
     db.commit()
 
-    # get file path to invalidate cache & delete from disk
-    file_path = "data/" + chat.file.file_path
-    if file_path:
-        from app.services.excel_agent_cache import DataCache
+    if chat.file:
+        file_path = "data/" + chat.file.file_path
+        if file_path:
+            from app.services.excel.cache import DataCache
 
-        cache = DataCache()
-        cache.invalidate(file_path)
+            cache = DataCache()
+            cache.invalidate(file_path)
 
-        import os
+            import os
 
-        if os.path.exists(file_path):
-            os.remove(file_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    if target_file:
+        conn_str = chat.connection.connection_string
+        if conn_str:
+            from app.services.sql.cache import SQLAgentCache
+
+            cache = SQLAgentCache()
+            cache.invalidate_connection(connection_string=conn_str)
+
+    if target_connection:
+        encrypted_conn_str = target_connection.connection_string
+        if encrypted_conn_str:
+            try:
+                from cryptography.fernet import Fernet
+                import os
+
+                encryption_key = os.getenv("ENCRYPTION_KEY")
+                fernet = Fernet(encryption_key.encode())
+
+                if isinstance(encrypted_conn_str, str):
+                    encrypted_conn_str = encrypted_conn_str.encode()
+
+                decrypted_conn_str = fernet.decrypt(encrypted_conn_str).decode()
+
+                from app.services.sql.cache import SQLAgentCache
+
+                cache = SQLAgentCache()
+                cache.invalidate_connection(connection_string=decrypted_conn_str)
+
+            except Exception as e:
+                print(f"Warning: Failed to invalidate cache for deleted chat: {e}")
