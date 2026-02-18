@@ -8,20 +8,23 @@ import matplotlib.pyplot as plt
 from sqlalchemy import create_engine, inspect, text
 from typing import List, Dict, Any
 import logging
+from app.models.db_models import ChatSettings
 
-from app.services.semantic.inference_engine import SemanticInferenceEngine
+from app.services.sql.inference_engine import SemanticInferenceEngine
 from app.services.base_agent import BaseAgent
 from app.core.llm import call_llm
 from app.services.sql.cache import SQLAgentCache
-from app.core.prompts import (
+from app.services.sql.prompts import (
     SQL_GENERATOR_PROMPT,
-    DOSSIER_PROMPT,
-    ANALYSIS_FORMAT_PROMPT,
     SQL_BRAIN_PROMPT,
     STRICT_SQL_RULES,
     SQL_FIX_PROMPT,
-    SUMMARY_SYNTHESIS_PROMPT,
     CHART_GENERATOR_PROMPT,
+)
+from app.core.prompts import (
+    DOSSIER_PROMPT,
+    ANALYSIS_FORMAT_PROMPT,
+    SUMMARY_SYNTHESIS_PROMPT,
 )
 
 # Set up logging
@@ -30,9 +33,14 @@ logger = logging.getLogger(__name__)
 
 
 class SQLAgent(BaseAgent):
-    def __init__(self, connection_string: str):
+    def __init__(self, connection_string: str, chat_settings: ChatSettings):
         super().__init__()
         self.connection_string = connection_string
+        if chat_settings is not None:
+            self.chat_settings = chat_settings
+        else:
+            self.chat_settings = ChatSettings(zero_leaks_mode=False, max_row_limit=100)
+
         self.cache_manager = SQLAgentCache()
 
         # Get engine from cache or create new one
@@ -59,8 +67,6 @@ class SQLAgent(BaseAgent):
             logger.info(
                 f"SQLAgent initialized with new schema: {len(self.schema)} chars"
             )
-
-        self.query_processor = QueryProcessor(self.schema)
 
     def _generate_sql(self, user_query: str) -> str:
         """Generate SQL query from natural language."""
@@ -149,19 +155,23 @@ class SQLAgent(BaseAgent):
         """Generate Python code for creating a chart from the data."""
         chart_type = step.get("chart_type", "bar")
 
+        if self.chat_settings.zero_leaks_mode is True:
+            data_sample = "REDACTED_FOR_PRIVACY (Zero Leaks Mode Active). Use columns and dtypes only"
+        else:
+            data_sample = df.head(5).to_dict(orient="records")
         # Prepare data preview for the LLM
         data_info = {
             "columns": list(df.columns),
             "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
             "shape": df.shape,
-            "sample": df.head(5).to_dict(orient="records"),
+            "sample": data_sample,
         }
 
         messages = [
             {
                 "role": "system",
                 "content": CHART_GENERATOR_PROMPT.format(
-                    step_description=step["description"],
+                    step_description=step.get("title", step.get("description", "")),
                     chart_type=chart_type,
                     data_info=json.dumps(data_info, indent=2, default=str),
                     user_query=user_query,
@@ -279,6 +289,7 @@ class SQLAgent(BaseAgent):
                 "content": ANALYSIS_FORMAT_PROMPT.format(
                     user_query=user_query,
                     combined_summary=combined_summary,
+                    zero_leaks_mode=self.chat_settings.zero_leaks_mode,
                 ),
             }
         ]
@@ -353,7 +364,7 @@ class SQLAgent(BaseAgent):
         self, step: Dict[str, Any], all_sqls: List[str]
     ) -> Dict[str, Any]:
         """Execute a SQL-based step (metric/table)."""
-        current_query = step["description"]
+        current_query = step.get("title", step.get("description", ""))
         sql_query = self._generate_sql(current_query)
         df = None
         last_error = None
@@ -406,6 +417,8 @@ class SQLAgent(BaseAgent):
                 "description": f"Retrieved {len(df)} records",
                 "query": current_sql_used,
             }
+            if step.get("detailed_description"):
+                exec_result["detailed_description"] = step["detailed_description"]
         else:
             # Failed after retries
             exec_result = {
@@ -415,10 +428,12 @@ class SQLAgent(BaseAgent):
                 "type": "error",
                 "data": f"Failed to execute query after {self.max_retries} attempts. Error: {last_error}",
             }
+            if step.get("detailed_description"):
+                exec_result["detailed_description"] = step["detailed_description"]
 
         if current_sql_used:
             all_sqls.append(
-                f"-- Step {step['step_number']}: {step['description']}\n{current_sql_used}"
+                f"-- Step {step['step_number']}: {step.get('title', step.get('description', ''))}\n{current_sql_used}"
             )
 
         return exec_result
@@ -427,7 +442,7 @@ class SQLAgent(BaseAgent):
         self, step: Dict[str, Any], all_sqls: List[str], user_query: str
     ) -> Dict[str, Any]:
         """Execute a chart step - first get data, then visualize it."""
-        current_query = step["description"]
+        current_query = step.get("title", step.get("description", ""))
         sql_query = self._generate_sql(current_query)
         df = None
         last_error = None
@@ -489,6 +504,8 @@ class SQLAgent(BaseAgent):
             chart_result["step_description"] = step["title"]
             chart_result["step_type"] = "chart"
             chart_result["query"] = current_sql_used
+            if step.get("detailed_description"):
+                chart_result["detailed_description"] = step["detailed_description"]
 
             if current_sql_used:
                 all_sqls.append(
@@ -505,6 +522,7 @@ class SQLAgent(BaseAgent):
                 "step_type": "error",
                 "type": "error",
                 "data": f"Chart generation failed: {str(e)}",
+                "detailed_description": step.get("detailed_description"),
             }
 
     def _execute_summary_step(
@@ -519,9 +537,12 @@ class SQLAgent(BaseAgent):
                 )
                 context_str += f"Query: {res.get('query','N/A')}\n"
                 context_str += f"Total Rows: {res.get('total_rows', 0)}\n"
-                context_str += (
-                    f"Data Sample (Top 5 rows): {str(res.get('data', [])[:5])}\n\n"
-                )
+                if self.chat_settings.zero_leaks_mode is True:
+                    context_str += "REDACTED_FOR_PRIVACY (Zero Leaks Mode Active). Use columns and dtypes only."
+                else:
+                    context_str += (
+                        f"Data Sample (Top 5 rows): {str(res.get('data', [])[:5])}\n\n"
+                    )
             elif res["type"] == "image":
                 context_str += (
                     f"Step {res['step_number']} ({res['step_description']}):\n"
@@ -536,7 +557,8 @@ class SQLAgent(BaseAgent):
                 "content": SUMMARY_SYNTHESIS_PROMPT.format(
                     user_query=user_query,
                     context_str=context_str,
-                    step_description=step["description"],
+                    step_description=step.get("title", step.get("description", "")),
+                    zero_leaks_mode=self.chat_settings.zero_leaks_mode,
                 ),
             }
         ]
@@ -626,30 +648,27 @@ class SQLAgent(BaseAgent):
                     {
                         "type": "step_start",
                         "step_number": step_number,
-                        "description": step.get("description", "Processing..."),
+                        "description": step.get("title", step.get("description", "Processing...")),
                         "step_type": step_type,
+                        "detailed_description": step.get("detailed_description"),
                     }
                 )
 
-            # 1. HANDLE METRIC / TABLE -> Execute SQL
             if step_type in ["metric", "table"]:
                 exec_result = self._execute_sql_step(step, all_sqls)
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
-            # 2. HANDLE CHART -> Execute SQL + Generate Visualization
             elif step_type == "chart":
                 exec_result = self._execute_chart_step(step, all_sqls, enhanced_query)
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
-            # 3. HANDLE SUMMARY -> Execute LLM Synthesis
             elif step_type == "summary":
                 final_summary_text = self._execute_summary_step(
                     step, enhanced_query, all_results
                 )
 
-            # 4. UNKNOWN TYPES
             else:
                 logger.warning(
                     f"Unknown step type '{step_type}', skipping step {step_number}"
@@ -660,6 +679,7 @@ class SQLAgent(BaseAgent):
                     "step_type": step_type,
                     "type": "error",
                     "data": f"Unknown step type: {step_type}",
+                    "detailed_description": step.get("detailed_description"),
                 }
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})

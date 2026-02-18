@@ -79,8 +79,8 @@ CREATE TABLE chat_settings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     zero_leaks_mode BOOLEAN DEFAULT FALSE,
-    max_row_limit BOOLEAN DEFAULT 100,
-    CONSTRAINT unique_chat_settings UNIQUE (chat_id), 
+    max_row_limit INTEGER DEFAULT 100,
+    CONSTRAINT unique_chat_settings UNIQUE (chat_id)
 ) 
 
 -- Indexes (Performance)

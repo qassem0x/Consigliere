@@ -1,5 +1,7 @@
 import pandas as pd
 import time
+import os
+import traceback
 from typing import Dict, Any
 
 
@@ -25,24 +27,32 @@ class DataCache:
 
             if current_time - entry["timestamp"] < self.TTL:
                 entry["timestamp"] = current_time
+                print(
+                    f"CACHE HIT: Using cached data for {file_path} - {len(entry['df'])} rows"
+                )
                 return entry["df"]
             else:
                 print(f"CACHE: Expired entry for {file_path}")
                 del self._store[file_path]
 
         print(f"CACHE MISS: Loading from disk -> {file_path}")
+        print(f"File exists: {os.path.exists(file_path)}")
         try:
             if file_path.endswith(".parquet"):
                 df = pd.read_parquet(file_path)
             elif file_path.endswith(".csv"):
                 df = pd.read_csv(file_path)
+            elif file_path.endswith((".xlsx", ".xls")):
+                df = pd.read_excel(file_path)
             else:
                 df = pd.read_parquet(file_path)
 
             self._store[file_path] = {"df": df, "timestamp": current_time}
+            print(f"CACHE: Loaded successfully - {len(df)} rows")
             return df
         except Exception as e:
             print(f"CACHE ERROR: {e}")
+            traceback.print_exc()
             raise e
 
     def invalidate(self, file_path: str):

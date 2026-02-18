@@ -3,7 +3,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.models.db_models import User
-from app.models.chats import ChatCreate, ChatOut
+from app.models.chats import ChatCreate, ChatOut, ChatSettingsUpdate, ChatSettingsOut
 from app.models.db_models import Chat, File, ChatSettings
 from app.core.database import get_db
 
@@ -56,6 +56,12 @@ def get_my_chats(
 
     result = []
     for chat in chats:
+        settings = None
+        if chat.settings:
+            settings = ChatSettingsOut(
+                zero_leaks_mode=chat.settings.zero_leaks_mode,
+                max_row_limit=chat.settings.max_row_limit,
+            )
         chat_data = {
             "id": chat.id,
             "title": chat.title
@@ -69,12 +75,7 @@ def get_my_chats(
                 if chat.file
                 else None
             ),
-            "settings": {
-                "zero_leaks_mode": (
-                    chat.settings.zero_leaks_mode if chat.settings else False
-                ),
-                "max_row_limit": chat.settings.max_row_limit if chat.settings else 100,
-            },
+            "settings": settings,
         }
         result.append(chat_data)
 
@@ -127,7 +128,7 @@ def delete_chat(
     db.delete(chat)
     db.commit()
 
-    if chat.file:
+    if target_file:
         file_path = "data/" + chat.file.file_path
         if file_path:
             from app.services.excel.cache import DataCache
@@ -139,14 +140,6 @@ def delete_chat(
 
             if os.path.exists(file_path):
                 os.remove(file_path)
-
-    if target_file:
-        conn_str = chat.connection.connection_string
-        if conn_str:
-            from app.services.sql.cache import SQLAgentCache
-
-            cache = SQLAgentCache()
-            cache.invalidate_connection(connection_string=conn_str)
 
     if target_connection:
         encrypted_conn_str = target_connection.connection_string
@@ -170,3 +163,39 @@ def delete_chat(
 
             except Exception as e:
                 print(f"Warning: Failed to invalidate cache for deleted chat: {e}")
+
+
+@router.patch("/chats/{chat_id}/settings", status_code=200)
+def update_chat_settings(
+    chat_id: str,
+    settings: ChatSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    chat = (
+        db.query(Chat)
+        .filter(Chat.id == chat_id, Chat.user_id == current_user.id)
+        .first()
+    )
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    if not chat.settings:
+        new_settings = ChatSettings(
+            chat_id=chat.id,
+            zero_leaks_mode=settings.zero_leaks_mode,
+            max_row_limit=settings.max_row_limit,
+        )
+        db.add(new_settings)
+    else:
+        chat.settings.zero_leaks_mode = settings.zero_leaks_mode
+        chat.settings.max_row_limit = settings.max_row_limit
+        db.add(chat.settings)
+
+    db.commit()
+    db.refresh(chat)
+
+    return {
+        "zero_leaks_mode": chat.settings.zero_leaks_mode,
+        "max_row_limit": chat.settings.max_row_limit,
+    }

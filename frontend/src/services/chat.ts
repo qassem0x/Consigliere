@@ -19,5 +19,9 @@ export const chatService = {
   async deleteChat(chatId: string) {
     const res = await api.delete(`/chats/${chatId}`);
     return true;
+  },
+  async updateChatSettings(chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number }) {
+    const response = await api.patch(`/chats/${chatId}/settings`, settings);
+    return response.data;
   }
 };

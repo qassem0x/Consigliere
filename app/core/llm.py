@@ -10,12 +10,13 @@ litellm.drop_params = True
 litellm.set_verbose = False
 litellm.suppress_debug_info = True
 
-MODEL_NAME = os.getenv("MODEL_NAME", "ollama/llama2:7b")  # default to local
-
-MODEL_NAME = "ollama/llama2:7b"
+MODEL_NAME = os.getenv("MODEL_NAME", "ollama/llama2:7b")
 
 if MODEL_NAME.startswith("ollama"):
     litellm.api_base = "http://localhost:11434"
+
+if MODEL_NAME.startswith("openrouter"):
+    litellm.api_base = "https://openrouter.ai/api/v1/chat/completions"
 
 
 @retry(
@@ -32,6 +33,39 @@ def call_llm(messages: list, temperature: float = 0.0, timeout: int = 60) -> str
             timeout=timeout,
         )
         return response.choices[0].message.content.strip()
+    except litellm.exceptions.RateLimitError as e:
+        print(f"RATE LIMIT HIT: {e}")
+        raise Exception("Rate limit exceeded. Please wait a moment and try again.")
+    except litellm.exceptions.Timeout as e:
+        print(f"TIMEOUT: {e}")
+        raise Exception("LLM request timed out. Try a simpler query.")
+    except Exception as e:
+        print(f"LLM ERROR: {e}")
+        raise Exception(f"LLM service error: {str(e)}")
+
+
+def call_llm_with_usage(
+    messages: list, temperature: float = 0.0, timeout: int = 60
+) -> dict:
+    try:
+        response = completion(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=temperature,
+            timeout=timeout,
+        )
+        content = response.choices[0].message.content.strip()
+
+        usage = {
+            "content": content,
+            "model": response.model,
+            "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
+            "completion_tokens": (
+                response.usage.completion_tokens if response.usage else 0
+            ),
+            "total_tokens": response.usage.total_tokens if response.usage else 0,
+        }
+        return usage
     except litellm.exceptions.RateLimitError as e:
         print(f"RATE LIMIT HIT: {e}")
         raise Exception("Rate limit exceeded. Please wait a moment and try again.")

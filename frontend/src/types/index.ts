@@ -1,6 +1,7 @@
 export interface StepResult {
     step_number: number;
     step_description: string;
+    detailed_description?: string;
     step_type: 'chart' | 'table' | 'metric' | 'summary';
     type: 'image' | 'table' | 'text' | 'error';
     data: any;
@@ -31,6 +32,10 @@ export interface ChatType {
         file_path: string;
         filename: string;
     };
+    settings?: {
+        zero_leaks_mode: boolean;
+        max_row_limit: number;
+    };
 }
 
 export interface Dossier {
@@ -54,15 +59,4 @@ export interface Message {
     } | null;
     streamingStatus?: 'planning' | 'processing' | 'complete' | 'error' | 'cancelled';
     currentStep?: number;
-}
-
-export interface StepResult {
-    step_number: number;
-    step_description: string;
-    step_type: 'table' | 'chart' | 'image' | 'text' | 'metric' | 'error';
-    type: 'table' | 'image' | 'text' | 'error';
-    data: any;
-    columns?: string[];
-    total_rows?: number;
-    description?: string;
 }

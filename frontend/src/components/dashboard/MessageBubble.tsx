@@ -19,9 +19,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx, sho
     const isStreaming = msg.streamingStatus && msg.streamingStatus !== 'complete';
 
     return (
-        <div
+            <div
             key={idx}
-            onClick={onClick}
+            onClick={isAssistant ? onClick : undefined}
             className={cn(
                 "flex gap-4 max-w-4xl mx-auto mb-6",
                 isAssistant ? "justify-start" : "justify-end",
@@ -97,7 +97,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx, sho
                 </div>
 
                 {isAssistant && hasSteps && showSteps && (
-                    <div className="w-full mt-4 pl-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="w-full mt-4 pl-4 animate-in fade-in slide-in-from-top-2 font-mono">
                         <div className="flex items-center gap-2 mb-2 ml-2">
                             <Layers size={12} className="text-muted-foreground" />
                             <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">

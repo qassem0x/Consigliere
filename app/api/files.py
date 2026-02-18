@@ -7,7 +7,8 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.models.db_models import User, File as DBFile, Dossier, Chat
+from app.models.db_models import User, File as DBFile, Dossier, Chat, ChatSettings
+from app.models.chats import ChatSettingsUpdate
 from app.services.excel.agent import ExcelDataAgent
 from app.services.ingestion import _transform_to_parquet
 
@@ -71,7 +72,9 @@ async def upload_file(
 
 @router.post("/files/{file_id}/analyze")
 def analyze_file(
-    file_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    file_id: str, 
+    settings: ChatSettingsUpdate = None,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
     db_file = (
         db.query(DBFile).filter(DBFile.id == file_id, DBFile.user_id == user.id).first()
@@ -86,7 +89,7 @@ def analyze_file(
                 status_code=404, detail="Physical file missing on server."
             )
 
-        agent = ExcelDataAgent(file_path=full_path)
+        agent = ExcelDataAgent(file_path=full_path, chat_settings=None)
         dossier_data = agent.generate_dossier()
         schema = agent.schema
 
@@ -113,5 +116,14 @@ def analyze_file(
     db.add(new_chat)
     db.commit()
     db.refresh(new_chat)
+
+    if settings:
+        chat_settings = ChatSettings(
+            chat_id=new_chat.id,
+            zero_leaks_mode=settings.zero_leaks_mode,
+            max_row_limit=settings.max_row_limit,
+        )
+        db.add(chat_settings)
+        db.commit()
 
     return {"status": "complete", "chat_id": str(new_chat.id), "dossier": dossier_data}

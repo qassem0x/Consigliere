@@ -1,61 +1,19 @@
-STRICT_SQL_RULES = """
-CRITICAL SYNTAX RULES:
-1. UNION/UNION ALL with LIMIT/ORDER BY needs parentheses: (SELECT * FROM a LIMIT 5) UNION ALL (SELECT * FROM b LIMIT 5)
-2. Prefer CTEs (WITH clause) over nested subqueries
-3. Match schema table/column names exactly
-4. Use explicit JOINs with proper ON conditions
-"""
-
-SQL_FIX_PROMPT = """
-Fix this failed SQL query for {target_db}.
-
-Error: {error}
-Failed Query: {query}
-Schema: {schema}
-
-Instructions:
-1. Analyze the error (UNION needs parentheses, check column names/case)
-2. Return ONLY the corrected SQL query (no markdown, no explanations)
-"""
-
 SUMMARY_SYNTHESIS_PROMPT = """
 Synthesize findings into executive insights.
 
 User Query: {user_query}
 Data: {context_str}
 Instructions: {step_description}
+zero_leaks_mode: {zero_leaks_mode}
 
 Provide 3-5 sentence summary:
 1. What was analyzed
-2. Key findings with numbers
-3. Business implications
-4. 2-3 recommendations
+if zero_leaks_mode is false only do that:
+  2. Key findings with numbers
+  3. Business implications
+  4. 2-3 recommendations
 
-Plain text only.
-"""
-
-CHART_GENERATOR_PROMPT = """
-Generate matplotlib code for: {chart_type}
-
-Query: {user_query}
-Task: {step_description}
-Data: {data_info}
-
-Rules:
-- DataFrame 'df' is loaded
-- Dark theme already applied
-- NO plt.savefig() or plt.show()
-- Set figsize=(10,6), add labels, grid(alpha=0.3)
-- Rotate long x-labels: xticks(rotation=45, ha='right')
-- Aggregate/sort/limit data appropriately
-
-Chart types:
-- bar: plt.bar() or df.plot.bar()
-- line: plt.plot() or df.plot.line()
-- pie: plt.pie() or df.plot.pie()
-- scatter: plt.scatter() or df.plot.scatter()
-
-Return Python code only.
+Plain text only. don't explictly mention tech details like zero leaks mode 
 """
 
 ANALYSIS_FORMAT_PROMPT = """
@@ -63,14 +21,18 @@ Synthesize data findings for executives.
 
 Query: {user_query}
 Data: {combined_summary}
-
+zero_leaks_mode: {zero_leaks_mode}
 Provide 3-5 sentences:
 1. What was analyzed
-2. Key findings with numbers
-3. Business implications
-4. Next steps
+if zero_leaks_mode is false only do that:
+  2. Key findings from data summary 
+  3. Suggest Next questions
 
-Professional tone, no headers.
+if zero_leaks_mode is true do that:
+  explain every step in combined summary, but in simple way for user don't dive in tech details
+
+Professional tone, use markdown and seperate sections with new line.
+don't explictly mention tech details like zero leaks mode 
 """
 
 DOSSIER_PROMPT = """
@@ -86,192 +48,5 @@ Return JSON:
   "briefing": "## 1. Executive Summary\\n* **Scope:** [X] tables, [Y] records\\n* **Domain:** [Industry]\\n* **Value:** [Why valuable]\\n\\n## 2. Intelligence\\n* **Model:** Tracks [Process]\\n* **Entities:** [Table1, Table2, Table3]\\n* **Relationships:** [FK descriptions]\\n\\n## 3. Assessment\\n* **Strengths:** [Data quality, structure]\\n* **Limitations:** [Missing data, concerns]\\n* **Opportunities:** [Analysis types]",
   "key_entities": ["Table1", "Table2", "..."],
   "recommended_actions": ["Q1", "Q2", "Q3"]
-}}
-"""
-
-SQL_GENERATOR_PROMPT = """
-Convert to SQL for {target_db}.
-
-Schema: {schema}
-Request: "{query}"
-
-Rules:
-1. SELECT only (no INSERT/UPDATE/DELETE/DROP/ALTER)
-2. Dialects: PostgreSQL ("), MySQL (`), SQL Server ([])
-3. Cast dates: CAST('2023-01-01' AS DATE)
-4. Use JOINs for multi-table queries
-5. Add GROUP BY for aggregations
-6. Default LIMIT 1000
-7. If column missing, check schema or return error
-8.Only return columns that provide meaningful, human-readable information. Omit internal identifiers, primary/foreign keys, and other technical fields unless explicitly requested.
-
-Return SQL only (no markdown).
-"""
-
-SQL_BRAIN_PROMPT = """
-Design SQL analysis workflow.
-
-Schema: {schema}
-History: {history}
-Query: "{query}"
-
-Intent: GENERAL_CHAT | DATA_ACTION | OFFENSIVE
-
-For DATA_ACTION:
-- Phase 1: Data steps (metric/table/chart) - each adds unique insight
-- Phase 2: Summary step (MANDATORY) - synthesizes findings
-
-Step types:
-- metric: single value
-- table: multi-row data
-- chart: visualization (bar/line/pie/scatter)
-- summary: synthesis (ALWAYS FINAL STEP)
-
-Chart when to use:
-- bar: compare categories, rankings
-- line: trends over time
-- pie: proportions (max 5-7 slices)
-- scatter: correlations
-
-Title emojis: 💰 Revenue, 📈 Growth, 📉 Decline, 📊 Charts, 🎯 KPIs, 💡 Insights, 🏆 Winners, ⚠️ Risks, 👥 Customers, 📦 Products, 🌍 Location, ⏰ Time, 💼 Business, 📋 Lists, 🔍 Analysis
-
-Complexity:
-- Simple: 1-2 steps + summary
-- Medium: 3-5 steps + summary
-- Complex: 5-8 steps + summary
-
-Anti-patterns: No summary, vague summaries, redundant steps, generic titles, charts duplicating metrics, >7 pie slices, line charts for non-sequential
-
-Summary description must specify:
-- Patterns to identify
-- Metrics to compare
-- Business implications
-- Recommendations
-- Specific questions to answer
-
-JSON format:
-{{
-  "intent": "...",
-  "reasoning": "Why these steps/charts?",
-  "plan": [
-    {{"step_number": 1, "type": "metric|table|chart", "title": "💰 Title", "description": "SQL instruction", "chart_type": "bar|line|pie|scatter|none"}},
-    {{"step_number": N, "type": "summary", "title": "💡 Insights", "description": "Detailed synthesis instructions", "chart_type": "none"}}
-  ]
-}}
-
-Example (sales analysis):
-{{
-  "intent": "DATA_ACTION",
-  "reasoning": "Show total, trend chart, top products chart, detail table, synthesize",
-  "plan": [
-    {{"step_number": 1, "type": "metric", "title": "💰 Total Sales (YTD)", "description": "SUM sales_amount WHERE sale_date >= '2024-01-01'", "chart_type": "none"}},
-    {{"step_number": 2, "type": "chart", "title": "📈 Monthly Trend", "description": "Monthly sales aggregated, line chart for patterns", "chart_type": "line"}},
-    {{"step_number": 3, "type": "chart", "title": "🏆 Top 10 Products", "description": "Product revenue, bar chart for comparison", "chart_type": "bar"}},
-    {{"step_number": 4, "type": "table", "title": "📋 Product Details", "description": "TOP 20 products with units, avg sale", "chart_type": "none"}},
-    {{"step_number": 5, "type": "summary", "title": "💼 Executive Summary", "description": "Analyze: (1) YTD context vs benchmarks (2) trend acceleration/patterns (3) top 3 products % of revenue, diversification (4) biggest opportunity & risk (5) 3 recommendations", "chart_type": "none"}}
-  ]
-}}
-"""
-
-EXCEL_BRAIN_PROMPT = """
-Design Excel/CSV analysis.
-
-Schema: {schema}
-History: {history}
-Query: "{query}"
-
-Intent: GENERAL_CHAT | DATA_ACTION | OFFENSIVE
-
-For DATA_ACTION:
-- Step 1: Headline metric
-- Step 2: Context chart (NOT same as metric)
-- Step 3: Drill-down table
-- Only use needed steps
-
-Rules:
-- NO redundant charts (don't chart single metrics)
-- Diverse views (metric → chart → table)
-- Filter/aggregate (top 10-20, not raw dumps)
-- Descriptive titles with emojis
-
-JSON:
-{{
-  "intent": "...",
-  "reasoning": "...",
-  "plan": [{{"step_number": 1, "type": "metric|chart|table|summary", "title": "💰 Title", "description": "Task", "chart_type": "bar|line|scatter|pie|none"}}]
-}}
-"""
-
-STEP_EXECUTOR_PROMPT = """
-Execute step {step_number}.
-
-Schema: {schema}
-Query: {query}
-Type: {step_type}
-Task: {step_description}
-Previous: {previous_results}
-
-Generate Python code:
-- Use df (loaded DataFrame)
-- Assign to 'result'
-- Charts: use plt, dark_background applied, NO savefig/show
-- Tables: return filtered DataFrame
-- Metrics: return number/string/dict
-- Also assign 'description' string
-
-Notes:
-- Verify columns exist in schema
-- Check semantic matches (revenue→sales_amount)
-- Only pandas/matplotlib allowed
-- NO os/sys/subprocess/open/exec/eval
-- Set title, labels, legend for charts
-
-Return code only.
-"""
-
-SQL_BRAIN_PROMPT = """
-You are an AI assistant for SQL databases. Your task is to:
-
-1️⃣ **Understand and clean the user's query**  
-   - Normalize messy input
-   - Extract intent, entities, metrics, filters, aggregation level, time context
-   - Map fuzzy terms to actual schema tables/columns
-   - Return an "enhanced_query" string
-
-2️⃣ **Design the SQL analysis workflow (plan)**  
-   - Decide which steps are needed: metric, table, chart, summary
-   - Each step should be actionable with clear descriptions for SQL/code generation
-   - Follow best practices: no redundant charts, CTEs over nested subqueries, joins correct
-   - Use emojis for titles where relevant
-   - Summary step must always exist as final step
-   - Output JSON only
-
-Database Schema:
-{schema}
-
-User Query: "{user_query}"
-History: "{history}"  # optional previous context
-
-Rules:
-- Charts: bar, line, pie, scatter; avoid >7 slices; line charts for sequential data
-- SQL: SELECT only; obey STRICT_SQL_RULES
-- Enhance clarity: time periods, limits, aggregation hints
-- Output must be fully JSON-parsable
-
-Return JSON with keys:
-{{
-  "enhanced_query": "Clean, structured query",
-  "intent": "GENERAL_CHAT | DATA_ACTION | OFFENSIVE",
-  "reasoning": "Why these steps were chosen",
-  "plan": [
-    {{
-      "step_number": 1,
-      "type": "metric|table|chart|summary",
-      "title": "💰 Title",
-      "description": "SQL instruction / what to compute",
-      "chart_type": "bar|line|pie|scatter|none"
-    }},
-    ...
-  ]
 }}
 """

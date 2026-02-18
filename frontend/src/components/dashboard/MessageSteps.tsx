@@ -116,6 +116,12 @@ export const TimelineStep: React.FC<{ step: StepResult; isLast: boolean; onImage
                     {step.step_description}
                 </div>
 
+                {step.detailed_description && (
+                    <div className="text-xs text-muted-foreground font-mono leading-relaxed">
+                        {step.detailed_description}
+                    </div>
+                )}
+
                 <div className="mt-1 border rounded-md overflow-hidden bg-card shadow-sm">
                     {step.type === 'image' && (
                         <div className="p-1 bg-muted/20">
@@ -219,6 +225,7 @@ export const MessageSteps: React.FC<MessageStepsProps> = memo(({ steps, related_
     const handleImageClick = (url: string) => {
         setSelectedImage(url);
     };
+
     const renderSteps = () => {
         if (!steps) return null;
 
@@ -267,7 +274,7 @@ export const MessageSteps: React.FC<MessageStepsProps> = memo(({ steps, related_
     };
 
     return (
-        <div className="w-full">
+        <div className="w-full font-mono">
             <div className="space-y-0">
                 {renderSteps()}
             </div>

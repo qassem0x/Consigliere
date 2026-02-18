@@ -13,6 +13,7 @@ interface SidebarProps {
     onLoadChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onLogout: () => void;
+    onUpdateSettings?: (chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number }) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = memo(({
@@ -22,7 +23,8 @@ export const Sidebar: React.FC<SidebarProps> = memo(({
     onNewChat,
     onLoadChat,
     onDeleteChat,
-    onLogout
+    onLogout,
+    onUpdateSettings
 }) => {
     const { user } = useAuth();
 
@@ -60,7 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = memo(({
                 </button>
 
                 {/* Navigation List */}
-                <div className="flex-1 overflow-y-auto mt-2 space-y-1 scrollbar-none">
+                <div className="flex-1 overflow-y-auto overflow-visible mt-2 space-y-1 scrollbar-none">
                     {isSidebarOpen && (
                         <div className="px-2 pb-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
                             Dossiers
@@ -82,6 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = memo(({
                                 isActive={activeChatId === item.id}
                                 onLoadChat={onLoadChat}
                                 onDeleteChat={onDeleteChat}
+                                onUpdateSettings={onUpdateSettings}
                             />
                         ) : (
                             <SidebarCollapsedItem

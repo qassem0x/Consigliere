@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ChatType, Dossier, Message } from '../types';
 import { chatService } from '../services/chat';
 import { fileService } from '../services/files';
+import { fetchModel } from '../utils/api';
 
 import { UploadProgressOverlay } from '../components/dashboard/UploadProgressOverlay';
 import { Sidebar } from '../components/dashboard/Sidebar';
@@ -32,6 +33,7 @@ export const DashboardPage: React.FC = () => {
     }>({ phase: null });
 
     const [loadingChatHistory, setLoadingChatHistory] = useState(false);
+    const [modelName, setModelName] = useState<string | undefined>(undefined);
 
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -63,6 +65,12 @@ export const DashboardPage: React.FC = () => {
         loadUserChats();
     }, [loadUserChats]);
 
+    useEffect(() => {
+        fetchModel()
+            .then(setModelName)
+            .catch(err => console.error("Failed to fetch model:", err));
+    }, []);
+
     const handleNewChat = useCallback(() => setView('wizard'), []);
 
     const handleDeleteChat = useCallback(async (chatId: string) => {
@@ -77,6 +85,18 @@ export const DashboardPage: React.FC = () => {
             alert("Failed to delete dossier. Please try again.");
         }
     }, [activeChatId, setSearchParams]);
+
+    const handleUpdateSettings = useCallback(async (chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number }) => {
+        try {
+            await chatService.updateChatSettings(chatId, settings);
+            setUserChats(prev => prev.map(chat => 
+                chat.id === chatId ? { ...chat, settings } : chat
+            ));
+        } catch (error) {
+            console.error("Failed to update settings:", error);
+            alert("Failed to update settings. Please try again.");
+        }
+    }, []);
 
     const fetchChatData = useCallback(async (id: string) => {
         setActiveChatId(id);
@@ -339,11 +359,7 @@ export const DashboardPage: React.FC = () => {
         processMessage(actionText);
     }, [processMessage]);
 
-    // --- UPLOAD HANDLER ---
-    const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
+    const handleFileUpload = useCallback(async (file: File, settings: { zero_leaks_mode: boolean; max_row_limit: number }) => {
         setView('chat');
         setMessages([]);
 
@@ -352,7 +368,7 @@ export const DashboardPage: React.FC = () => {
             const uploadData = await fileService.uploadFileOnly(file);
 
             setUploadProgress({ phase: 'analyzing', fileName: file.name });
-            const analysisData = await fileService.createDossier(uploadData.file_id);
+            const analysisData = await fileService.createDossier(uploadData.file_id, settings);
 
             setSearchParams({ chatId: analysisData.chat_id });
             await loadUserChats();
@@ -364,10 +380,6 @@ export const DashboardPage: React.FC = () => {
             setMessages([{ role: 'assistant', content: "**ERROR:** Uplink or Analysis failed. Please try again." }]);
         }
     }, [loadUserChats, setSearchParams]);
-
-    const handleFileUploadClick = useCallback(() => {
-        fileInputRef.current?.click();
-    }, []);
 
     // --- NEW: DATABASE CONNECTION HANDLER ---
     const handleConnectDB = useCallback(async (dbData: any) => {
@@ -417,7 +429,7 @@ export const DashboardPage: React.FC = () => {
     const toggleSidebar = useCallback(() => setSidebarOpen(prev => !prev), []);
 
     return (
-        <div className="flex h-screen bg-[#050505] text-slate-200 overflow-hidden font-sans selection:bg-rose-500/30">
+        <div className="flex h-screen bg-[#050505] text-slate-200 overflow-hidden font-['Inter'] selection:bg-rose-500/30">
             {/* Ambient Background Effects */}
             <div className="fixed inset-0 bg-grid-pattern opacity-[0.03] pointer-events-none"></div>
             <div className="fixed inset-0 bg-gradient-to-b from-black via-transparent to-rose-950/5 pointer-events-none"></div>
@@ -433,6 +445,7 @@ export const DashboardPage: React.FC = () => {
                 onLoadChat={handleChatSelect}
                 onLogout={logout}
                 onDeleteChat={handleDeleteChat}
+                onUpdateSettings={handleUpdateSettings}
             />
 
             <main className="flex-1 flex flex-col relative min-w-0 bg-[#050505]">
@@ -440,6 +453,7 @@ export const DashboardPage: React.FC = () => {
                     isSidebarOpen={isSidebarOpen}
                     view={view}
                     onToggleSidebar={toggleSidebar}
+                    modelName={modelName}
                 />
 
                 <div className="flex-1 relative overflow-hidden">
@@ -464,15 +478,12 @@ export const DashboardPage: React.FC = () => {
                     {view === 'wizard' && (
                         <WizardModal
                             onClose={() => setView('home')}
-                            onFileUpload={handleFileUploadClick}
-                            onConnectDB={handleConnectDB} // <--- Added Handler Here
+                            onFileUpload={handleFileUpload}
+                            onConnectDB={handleConnectDB}
                         />
                     )}
                 </div>
             </main>
-
-            {/* Hidden Input for File Uploads */}
-            <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} />
         </div>
     );
 };

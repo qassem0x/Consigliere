@@ -9,42 +9,45 @@ import contextlib
 import matplotlib.pyplot as plt
 import json_repair
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
-# UPDATED: We now only need BRAIN_PROMPT and the others
-from app.core.prompts import (
-    ANALYSIS_FORMAT_PROMPT,
-    DOSSIER_PROMPT,
+from app.services.excel.prompts import (
     EXCEL_BRAIN_PROMPT,
     STEP_EXECUTOR_PROMPT,
 )
+from app.core.prompts import (
+    ANALYSIS_FORMAT_PROMPT,
+    DOSSIER_PROMPT,
+)
 from app.services.base_agent import BaseAgent
 from app.services.excel.cache import DataCache
+from app.services.excel.inference_engine import ExcelInferenceEngine
 from app.core.llm import call_llm
+from app.models.db_models import ChatSettings
 
 dotenv.load_dotenv()
 
 
 class ExcelDataAgent(BaseAgent):
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: str, chat_settings: Optional[ChatSettings] = None):
+        print(f"DEBUG: Initializing ExcelDataAgent for {file_path}")
+
+        if chat_settings is not None:
+            self.chat_settings = chat_settings
+        else:
+            self.chat_settings = ChatSettings(zero_leaks_mode=False, max_row_limit=100)
+
         self.cache_manager = DataCache()
         self.df = self.cache_manager.get_data(file_path)
+        print(
+            f"DEBUG: Loaded df with {len(self.df) if self.df is not None else 0} rows"
+        )
 
-        # Smart Schema Generation
-        schema_parts = []
-        for col in self.df.columns:
-            dtype = self.df[col].dtype
-            if pd.api.types.is_numeric_dtype(dtype):
-                sample = f"Range: {self.df[col].min()} to {self.df[col].max()}"
-            else:
-                if self.df[col].nunique() < 20:
-                    top_vals = self.df[col].unique()[:5].tolist()
-                    sample = f"Sample: {top_vals}"
-                else:
-                    sample = f"Unique Values: {self.df[col].nunique()} from {len(self.df)} records"
-            schema_parts.append(f"- {col} ({dtype}): {sample}")
+        if self.df is None:
+            raise ValueError(f"Failed to load data from {file_path}")
 
-        self.schema = "\n".join(schema_parts)
+        inference_engine = ExcelInferenceEngine(self.df)
+        self.schema = inference_engine.infer()
         print("SCHEMA: ", self.schema)
 
     def _consult_brain(self, user_query: str, history_str: str = ""):
@@ -94,9 +97,14 @@ class ExcelDataAgent(BaseAgent):
 
         for i, res in enumerate(prev_results):
             if res["type"] == "table":
-                prev_summary.append(
-                    f"Step {i}: Returned table with {res.get('total_rows', 0)} rows"
-                )
+                if self.chat_settings.zero_leaks_mode is True:
+                    prev_summary.append(
+                        f"Step {i}: Returned table with {res.get('total_rows', 0)} rows. Data REDACTED (Zero Leaks Mode)."
+                    )
+                else:
+                    prev_summary.append(
+                        f"Step {i}: Returned table with {res.get('total_rows', 0)} rows, Data Sample: {res.get('data', [])[:5]}"
+                    )
             elif res["type"] == "image":
                 prev_summary.append(
                     f"Step {i}: Created chart - {res.get('description', '')}"
@@ -109,7 +117,7 @@ class ExcelDataAgent(BaseAgent):
         )
 
         # Pass specific chart type guidance if available
-        step_desc = step["description"]
+        step_desc = step.get("title", step.get("description", ""))
         if step.get("chart_type") and step["chart_type"] != "none":
             step_desc += f" (Create a {step['chart_type']} visualization)"
 
@@ -172,15 +180,50 @@ class ExcelDataAgent(BaseAgent):
 
     def _execute_code(self, clean_code: str):
         """Execute sanitized Python code with timeout and return structured result"""
-        local_scope = {"df": self.df, "pd": pd, "plt": plt, "result": None}
+        print(f"DEBUG: _execute_code - self.df is None: {self.df is None}")
+        print(f"DEBUG: _execute_code - self.df type: {type(self.df)}")
+
+        if self.df is None:
+            return {
+                "type": "error",
+                "data": "DataFrame not loaded. Please re-upload the file.",
+            }
+
+        local_scope = {
+            "df": self.df,
+            "pd": pd,
+            "plt": plt,
+            "result": None,
+            "print": print,
+            "len": len,
+            "str": str,
+            "int": int,
+            "float": float,
+            "list": list,
+            "dict": dict,
+            "range": range,
+            "enumerate": enumerate,
+            "zip": zip,
+            "sum": sum,
+            "min": min,
+            "max": max,
+            "abs": abs,
+            "sorted": sorted,
+            "any": any,
+            "all": all,
+        }
         stdout_capture = io.StringIO()
 
         try:
             plt.clf()
             plt.close("all")
 
+            plt.style.use("dark_background")
+
+            print(f"DEBUG: Executing code: {clean_code[:200]}...")
+
             with contextlib.redirect_stdout(stdout_capture):
-                exec(clean_code, {"__builtins__": __builtins__}, local_scope)
+                exec(clean_code, local_scope)
 
             result = local_scope.get("result")
             result_description = local_scope.get("description", "")
@@ -223,6 +266,75 @@ class ExcelDataAgent(BaseAgent):
                     "description": result_description,
                 }
 
+            elif isinstance(result, dict):
+                # CASE 1: Column-Oriented Data (e.g. {'Name': ['A', 'B'], 'Age': [10, 20]})
+                if result and all(isinstance(v, list) for v in result.values()):
+                    try:
+                        # Check if lists are of equal length (standard dataframe)
+                        lengths = [len(v) for v in result.values()]
+                        if len(set(lengths)) == 1:
+                            df_temp = pd.DataFrame(result)
+                            return {
+                                "type": "table",
+                                "data": df_temp.head(50)
+                                .fillna("")
+                                .to_dict(orient="records"),
+                                "columns": list(df_temp.columns),
+                                "total_rows": len(df_temp),
+                                "description": result_description or "Data Table",
+                            }
+                    except Exception:
+                        pass  # Fall through to Summary View if DataFrame creation fails
+
+                # CASE 2: Summary/Metric View
+                try:
+                    summary_rows = []
+
+                    def process_value(key_prefix, value):
+                        """Helper to flatten nested structures recursively"""
+                        if isinstance(value, dict):
+                            for k, v in value.items():
+                                # Create composite key: "sex_distribution (male)"
+                                new_key = f"{key_prefix} ({k})" if key_prefix else k
+                                process_value(new_key, v)
+                        elif isinstance(value, list):
+                            # Cleanly format lists: "[A, B, C]" instead of "['A', 'B', 'C']"
+                            # Truncate if too long to avoid UI bloat
+                            if len(value) > 5:
+                                clean_val = (
+                                    ", ".join(map(str, value[:5]))
+                                    + f", ... (+{len(value)-5} more)"
+                                )
+                            else:
+                                clean_val = ", ".join(map(str, value))
+                            summary_rows.append(
+                                {"Metric": key_prefix, "Value": clean_val}
+                            )
+                        else:
+                            # Primitives (int, float, str)
+                            summary_rows.append({"Metric": key_prefix, "Value": value})
+
+                    # Iterate main dictionary
+                    for k, v in result.items():
+                        process_value(k, v)
+
+                    df_temp = pd.DataFrame(summary_rows)
+
+                    return {
+                        "type": "table",
+                        "data": df_temp.fillna("").to_dict(orient="records"),
+                        "columns": ["Metric", "Value"],
+                        "total_rows": len(df_temp),
+                        "description": result_description or "Summary Statistics",
+                    }
+                except Exception as e:
+                    print(f"DEBUG: Failed to create summary table: {e}")
+                    # CASE 3: Absolute Fallback (Raw JSON)
+                    return {
+                        "type": "text",
+                        "data": json.dumps(result, indent=2, default=str),
+                    }
+
             elif isinstance(result, pd.Series):
                 if result.empty:
                     return {"type": "text", "data": "Query returned an empty result."}
@@ -263,15 +375,18 @@ class ExcelDataAgent(BaseAgent):
         self, user_query: str, all_results: List[Dict[str, Any]]
     ) -> str:
         """Convert technical result into natural language response"""
-        # If the brain decided on general chat, this function might not be needed
-        # but we keep it for data action summaries.
 
         summary_parts = []
         for i, result in enumerate(all_results, 1):
             if result["type"] == "table":
-                summary_parts.append(
-                    f"Step {i}: Displayed {result.get('total_rows', 0)} rows of data"
-                )
+                if self.chat_settings.zero_leaks_mode is True:
+                    summary_parts.append(
+                        f"Step {i}: Displayed {result.get('total_rows', 0)} rows of data. Data REDACTED (Zero Leaks Mode)."
+                    )
+                else:
+                    summary_parts.append(
+                        f"Step {i}: Displayed {result.get('total_rows', 0)} rows of data, Data Sample: {result.get('data', [])[:10]}"
+                    )
             elif result["type"] == "image":
                 summary_parts.append(
                     f"Step {i}: Created visualization - {result.get('description', '')}"
@@ -287,6 +402,7 @@ class ExcelDataAgent(BaseAgent):
                 "content": ANALYSIS_FORMAT_PROMPT.format(
                     user_query=user_query,
                     combined_summary=combined_summary,
+                    zero_leaks_mode=self.chat_settings.zero_leaks_mode,
                 ),
             }
         ]
@@ -370,6 +486,7 @@ class ExcelDataAgent(BaseAgent):
                     "step_number": step["step_number"],
                     "description": step["title"],
                     "step_type": step["type"],
+                    "detailed_description": step.get("detailed_description"),
                 }
             )
 
@@ -397,6 +514,8 @@ class ExcelDataAgent(BaseAgent):
             exec_result["step_number"] = step["step_number"]
             exec_result["step_description"] = step["title"]
             exec_result["step_type"] = step["type"]
+            if step.get("detailed_description"):
+                exec_result["detailed_description"] = step["detailed_description"]
 
             all_results.append(exec_result)
 
@@ -408,7 +527,7 @@ class ExcelDataAgent(BaseAgent):
         # Construct full code log
         code_log = ""
         for i, step in enumerate(plan_steps):
-            code_log += f"# Step {step['step_number']}: {step['description']}\n"
+            code_log += f"# Step {step['step_number']}: {step.get('title', step.get('description', ''))}\n"
             if i < len(all_code):
                 code_log += all_code[i] + "\n\n"
             code_log += "=" * 50 + "\n\n"
@@ -463,7 +582,11 @@ class ExcelDataAgent(BaseAgent):
     def generate_dossier(self) -> dict:
         """Generate initial briefing about the dataset"""
         stats_summary = self._calculate_stats()
-        preview = self.df.head(5).to_string()
+
+        if self.chat_settings.zero_leaks_mode is True:
+            preview = "REDACTED_FOR_PRIVACY (Zero Leaks Mode Active). Use schema and stats only."
+        else:
+            preview = self.df.head(5).to_string()
 
         messages = [
             {

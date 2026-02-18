@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import URL
 from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
-from app.models.db_models import Chat, Dossier, User
+from app.models.db_models import Chat, Dossier, User, ChatSettings
 from app.models.connections import ConnectionCreate, ConnectionOut
 from app.models.db_models import Connection
 from app.core.database import get_db
@@ -56,7 +56,15 @@ def create_connection(
 
     ## DO ANALYSIS AND CREATE DOSSIER
     try:
-        agent = SQLAgent(url.render_as_string(hide_password=False))
+        # temp chat settings for now, stupid solution i know but it just works
+        temp_settings = ChatSettings(
+            max_row_limit=connection.max_row_limit,
+            zero_leaks_mode=connection.zero_leaks_mode,
+        )
+
+        agent = SQLAgent(
+            url.render_as_string(hide_password=False), chat_settings=temp_settings
+        )
         print(
             f"DEBUG: Successfully initialized SQLAgent for connection: {connection.name}"
         )
@@ -121,6 +129,15 @@ def create_connection(
                 title=f"Analysis: {connection.name}",
             )
             db.add(new_chat)
+            db.flush()
+
+            new_settings = ChatSettings(
+                chat_id=new_chat.id,
+                zero_leaks_mode=connection.zero_leaks_mode,
+                max_row_limit=connection.max_row_limit,
+            )
+            db.add(new_settings)
+
         db.commit()
         db.refresh(new_connection)
         return {

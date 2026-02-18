@@ -10,6 +10,8 @@ class ConnectionCreate(BaseModel):
     database: str
     username: str
     password: str
+    zero_leaks_mode: bool = False
+    max_row_limit: int = 100
 
 
 class ConnectionOut(BaseModel):

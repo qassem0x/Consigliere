@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.api import files, auth, chats, messages, connections
+from app.api import files, auth, chats, messages, connections, model
 from sqlalchemy import create_engine, text
 import os
 
@@ -27,6 +27,7 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(chats.router)
 app.include_router(messages.router)
 app.include_router(connections.router)
+app.include_router(model.router)
 
 
 @app.get("/")

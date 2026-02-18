@@ -5,9 +5,10 @@ interface HeaderProps {
     isSidebarOpen: boolean;
     view: 'home' | 'chat' | 'wizard';
     onToggleSidebar: () => void;
+    modelName?: string;
 }
 
-export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, view, onToggleSidebar }) => {
+export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, view, onToggleSidebar, modelName }) => {
     return (
         <header className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-[#050505]/80 backdrop-blur-md z-20">
             <div className="flex items-center gap-4">
@@ -31,6 +32,11 @@ export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, view, onToggleSid
                     )}
                 </div>
             </div>
+            {modelName && (
+                <div className="text-xs font-mono text-slate-500">
+                    Model: <span className="text-slate-400">{modelName}</span>
+                </div>
+            )}
         </header>
     );
 };

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from app.core.database import SessionLocal, get_db
 from app.core.deps import get_current_user
-from app.models.db_models import User, Chat, Message
+from app.models.db_models import User, Chat, Message, ChatSettings
 from app.models.messages import MessageCreate, MessageOut
 from app.services.excel.agent import ExcelDataAgent
 from app.services.sql.agent import SQLAgent
@@ -97,7 +97,8 @@ async def send_message(
             raise HTTPException(
                 status_code=404, detail="Data file not found on server."
             )
-        agent = ExcelDataAgent(path)
+        chat_settings = db.query(ChatSettings).where(ChatSettings.chat_id == chat_id).first()
+        agent = ExcelDataAgent(path, chat_settings=chat_settings)
     elif chat.connection_id:
         code_type = "sql"
         if not chat.connection.connection_string:
@@ -120,7 +121,10 @@ async def send_message(
 
         print("DEBUG: decrypted conn str: ", decrypted_conn_str)
         try:
-            agent = SQLAgent(decrypted_conn_str)
+            chat_settings = (
+                db.query(ChatSettings).where(ChatSettings.chat_id == chat_id).first()
+            )
+            agent = SQLAgent(decrypted_conn_str, chat_settings=chat_settings)
             print(f"DEBUG: Successfully initialized SQLAgent for chat {chat_id}")
         except Exception as agent_err:
             print(

@@ -42,3 +42,12 @@ export const fetchStream = async (endpoint: string, body: any) => {
 
     return response;
 };
+
+export const fetchModel = async (): Promise<string> => {
+    const response = await fetch(`${API_BASE_URL}/model`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch model: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.model;
+};
