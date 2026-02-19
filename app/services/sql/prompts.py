@@ -25,13 +25,31 @@ Query: {user_query}
 Task: {step_description}
 Data: {data_info}
 
-Rules:
-- DataFrame 'df' is loaded
-- Dark theme already applied
-- NO plt.savefig() or plt show()
-- Set figsize=(10,6), add labels, grid(alpha=0.3)
-- Rotate long x-labels: xticks(rotation=45, ha='right')
-- Aggregate/sort/limit data appropriately
+CRITICAL RULES:
+
+📌 RULE 1: ALWAYS FILTER BEFORE VISUALIZATION
+   - If showing categories → MUST filter to top 10
+   - NEVER plot all categories  - unreadable
+   - Example: data = data.nlargest(10, 'column')
+
+📌 RULE 2: AGGREGATE BEFORE CHARTING
+   - NEVER plot raw data points - ALWAYS aggregate first
+   - Scatter: one point per category, not per row
+   - Bar: use aggregated values, not raw values
+
+📌 RULE 3: CHART TYPE SELECTION
+   - Comparison/ranking (top 10) → bar chart
+   - Trend over time → line chart
+   - Part-to-whole → pie chart (max 5 slices) OR stacked bar
+   - Relationship between two numeric → scatter
+
+📌 RULE 4: OUTPUT FORMAT
+   - DataFrame 'df' is loaded
+   - Dark theme already applied
+   - NO plt.savefig() or plt show()
+   - Set figsize=(10,6), add labels, grid(alpha=0.3)
+   - Rotate long x-labels: xticks(rotation=45, ha='right')
+   - Aggregate/sort/limit data appropriately
 
 Chart types:
 - bar: plt.bar() or df.plot.bar()
@@ -79,12 +97,31 @@ You are an AI assistant for SQL databases. Your task is to:
    - Map user intent to actual schema table/column names
 
 3️⃣ **Design the SQL analysis workflow (plan)**  
-   - Decide which steps are needed: metric, table, chart, summary
-   - Each step should be actionable with clear descriptions for SQL/code generation
-   - Follow best practices: no redundant charts, CTEs over nested subqueries, joins correct
+   Your goal is to FULLY ANSWER the user's question with actionable insights. Consider:
+   - What dimensions (categorical breakdowns) make sense for the query?
+   - What measures (quantities, revenues, counts) answer the core question?
+   - How can we reveal patterns, trends, or preferences?
+   - What actionable recommendations can we derive?
+
+4️⃣ **Step Guidelines**:
+   - Create 2-5 steps based on query complexity
+   - Each step should reveal NEW insight, not repeat information
+   - Pattern should vary based on query type:
+     * Comparison queries: overview → breakdown → comparison → insights
+     * Trend queries: baseline → trend → pattern → forecast
+     * Distribution queries: overall → segments → outliers → summary
+     * Behavioral queries: who → what → why → recommendations
+   - Include at least one table with actionable details (top N with specific columns)
+   - Final step should synthesize findings into actionable insights
    - Use emojis for titles where relevant
    - Summary step must always exist as final step
-   - Output JSON only
+
+5️⃣ **Step Description Guidelines**:
+   Write detailed_description that:
+   - Interprets WHAT THE DATA SHOWS, not what the step does technically
+   - Uses phrases like "This reveals...", "Interestingly...", "This suggests..."
+   - Connects to business value: "Marketing could target...", "Consider focusing on..."
+   - Avoid: "This step calculates...", "We will now..."
 
 Database Schema:
 {schema}
@@ -95,6 +132,7 @@ History: "{history}"  # optional previous context
 Rules:
 - Charts: bar, line, pie, scatter; avoid >7 slices; line charts for sequential data
 - SQL: SELECT only; obey STRICT_SQL_RULES
+- For "purchasing behavior" or "sales" → calculate REVENUE (price × quantity) if columns available
 - Enhance clarity: time periods, limits, aggregation hints
 - Output must be fully JSON-parsable
 - Always use exact table and column names from the schema
@@ -116,7 +154,7 @@ Return JSON with keys:
       "step_number": 1,
       "type": "metric|table|chart|summary",
       "title": "💰 Title",
-      "detailed_description": "Write 2-5 sentences as a natural explanation. Skip 'This step does X'. Connect to previous steps naturally like 'Building on that, now we...' or 'Using those results, let's also look at...'. Be conversational, like explaining to a colleague.",
+      "detailed_description": "Write 2-5 sentences interpreting the findings. Focus on WHAT THIS REVEALS and BUSINESS IMPLICATIONS. Example: 'This reveals that City A spends 40% more than average, suggesting premium products perform well there. Marketing could tailor campaigns to highlight quality.'",
       "chart_type": "bar|line|pie|scatter|none"
     }},
     ...
