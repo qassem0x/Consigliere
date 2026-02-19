@@ -468,7 +468,7 @@ class SQLAgent(BaseAgent):
 
             if current_sql_used:
                 all_sqls.append(
-                    f"-- Step {step['step_number']}: {step['description']}\n{current_sql_used}\n\n# Chart Code:\n{clean_code}"
+                    f"-- Step {step['step_number']}: {step.get('description', step.get('title', ''))}\n{current_sql_used}\n\n# Chart Code:\n{clean_code}"
                 )
 
             return chart_result
