@@ -10,6 +10,7 @@ from typing import List, Dict, Any
 import logging
 from app.models.db_models import ChatSettings
 
+from app.services.base_agent import BaseAgent
 from app.services.sql.inference_engine import SemanticInferenceEngine
 from app.core.llm import call_llm
 from app.services.sql.cache import SQLAgentCache
@@ -31,8 +32,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class SQLAgent:
+class SQLAgent(BaseAgent):
     def __init__(self, connection_string: str, chat_settings: ChatSettings):
+        super().__init__(chat_settings)
         self.connection_string = connection_string
         if chat_settings is not None:
             self.chat_settings = chat_settings
@@ -257,46 +259,6 @@ class SQLAgent:
                 "type": "error",
                 "data": f"Chart generation failed: {str(e)}",
             }
-
-    def _format_final_response(
-        self, user_query: str, all_results: List[Dict[str, Any]]
-    ) -> str:
-        """Format final response using LLM when no summary step exists."""
-        summary_parts = []
-        for i, result in enumerate(all_results, 1):
-            if result["type"] == "table":
-                summary_parts.append(
-                    f"Step {i}: Retrieved {result.get('total_rows', 0)} rows. "
-                    f"Columns: {', '.join(result.get('columns', []))}"
-                )
-            elif result["type"] == "image":
-                summary_parts.append(
-                    f"Step {i}: Created visualization - {result.get('description', '')}"
-                )
-            elif result["type"] == "error":
-                summary_parts.append(f"Step {i}: Error - {result.get('data', '')}")
-            elif result["type"] == "text":
-                summary_parts.append(f"Step {i}: {result.get('data', '')}")
-
-        combined_summary = "\n".join(summary_parts)
-
-        messages = [
-            {
-                "role": "system",
-                "content": ANALYSIS_FORMAT_PROMPT.format(
-                    user_query=user_query,
-                    combined_summary=combined_summary,
-                    zero_leaks_mode=self.chat_settings.zero_leaks_mode,
-                ),
-            }
-        ]
-
-        try:
-            response = call_llm(messages, temperature=0.7, timeout=30)
-            return response
-        except Exception as e:
-            logger.error(f"Format error: {e}")
-            return f"Analysis complete. {combined_summary}"
 
     def _consult_brain(self, user_query: str, history_str: str = "") -> Dict[str, Any]:
         """Consult the planning brain to generate analysis plan."""
