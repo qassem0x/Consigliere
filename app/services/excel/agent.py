@@ -260,7 +260,7 @@ class ExcelDataAgent(BaseAgent):
                     }
                 return {
                     "type": "table",
-                    "data": result.head(50).fillna("").to_dict(orient="records"),
+                    "data": result.head(self.chat_settings.max_row_limit).fillna("").to_dict(orient="records"),
                     "columns": list(result.columns),
                     "total_rows": len(result),
                     "description": result_description,
@@ -276,7 +276,7 @@ class ExcelDataAgent(BaseAgent):
                             df_temp = pd.DataFrame(result)
                             return {
                                 "type": "table",
-                                "data": df_temp.head(50)
+                                "data": df_temp.head(self.chat_settings.max_row_limit)
                                 .fillna("")
                                 .to_dict(orient="records"),
                                 "columns": list(df_temp.columns),
@@ -348,7 +348,7 @@ class ExcelDataAgent(BaseAgent):
 
                 return {
                     "type": "table",
-                    "data": df_temp.head(50).fillna("").to_dict(orient="records"),
+                    "data": df_temp.head(self.chat_settings.max_row_limit).fillna("").to_dict(orient="records"),
                     "columns": list(df_temp.columns),
                     "total_rows": len(df_temp),
                     "description": result_description,

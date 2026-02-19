@@ -47,7 +47,6 @@ class SQLAgent(BaseAgent):
         self.engine = self.cache_manager.get_engine(connection_string)
         self.target_db = connection_string.split(":")[0]
         self.max_retries = 3
-        self.result_limit = 50
 
         # Ensure plots directory exists
         os.makedirs("static/plots", exist_ok=True)
@@ -400,7 +399,7 @@ class SQLAgent(BaseAgent):
         if df is not None:
             df_clean = df.where(pd.notnull(df), None)
             data_dict = (
-                df_clean.head(self.result_limit)
+                df_clean.head(self.chat_settings.max_row_limit)
                 .fillna("")
                 .astype(str)
                 .to_dict(orient="records")
