@@ -359,7 +359,7 @@ export const DashboardPage: React.FC = () => {
         processMessage(actionText);
     }, [processMessage]);
 
-    const handleFileUpload = useCallback(async (file: File, settings: { zero_leaks_mode: boolean; max_row_limit: number }) => {
+    const handleFileUpload = useCallback(async (file: File, settings: { title?: string; zero_leaks_mode: boolean; max_row_limit: number }) => {
         setView('chat');
         setMessages([]);
 

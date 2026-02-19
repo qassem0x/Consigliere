@@ -1,9 +1,11 @@
 from pydantic import BaseModel, ConfigDict
 from uuid import UUID
+from typing import Optional
 
 
 class ConnectionCreate(BaseModel):
     name: str
+    title: Optional[str] = None
     drivername: str = "postgresql"
     host: str
     port: int = 5432

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, ChevronRight, ChevronLeft, FileSpreadsheet, Database, Shield, Check, Upload } from 'lucide-react';
 
 interface FileSettings {
+    title: string;
     zero_leaks_mode: boolean;
     max_row_limit: number;
 }
@@ -17,11 +18,13 @@ export const WizardModal: React.FC<WizardModalProps> = ({ onClose, onFileUpload,
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [fileSettings, setFileSettings] = useState<FileSettings>({
+        title: '',
         zero_leaks_mode: false,
         max_row_limit: 100
     });
     const [dbData, setDbData] = useState({
         name: '',
+        title: '',
         drivername: 'postgresql',
         host: '',
         port: 5432,
@@ -160,6 +163,19 @@ export const WizardModal: React.FC<WizardModalProps> = ({ onClose, onFileUpload,
             )}
 
             <div className="space-y-4">
+                <div>
+                    <label className="text-xs text-slate-400 mb-1.5 block">Chat Title</label>
+                    <input
+                        type="text"
+                        maxLength={100}
+                        value={currentSettings.title}
+                        onChange={(e) => setSettings({...currentSettings, title: e.target.value})}
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-primary"
+                        placeholder="My Analysis"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">Optional. Leave empty for auto-generated title.</p>
+                </div>
+
                 <div>
                     <label className="text-xs text-slate-400 mb-1.5 block">Max Row Limit</label>
                     <input

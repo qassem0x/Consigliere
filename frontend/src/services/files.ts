@@ -11,7 +11,7 @@ export const fileService = {
     return res.data;
   },
 
-  createDossier: async (fileId: string, settings?: { zero_leaks_mode: boolean; max_row_limit: number }): Promise<AnalysisResult> => {
+  createDossier: async (fileId: string, settings?: { title?: string; zero_leaks_mode: boolean; max_row_limit: number }): Promise<AnalysisResult> => {
     const res = await api.post<AnalysisResult>(`/files/${fileId}/analyze`, settings);
     return res.data;
   },

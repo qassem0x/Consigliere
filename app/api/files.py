@@ -111,7 +111,7 @@ def analyze_file(
         user_id=user.id,
         file_id=db_file.id,
         dossier_id=new_dossier.id,
-        title=f"Analysis: {db_file.filename}",
+        title=settings.title if settings and settings.title else f"Analysis: {db_file.filename}",
     )
     db.add(new_chat)
     db.commit()

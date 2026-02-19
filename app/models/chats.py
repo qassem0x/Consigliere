@@ -12,6 +12,7 @@ class ChatCreate(BaseModel):
 
 
 class ChatSettingsUpdate(BaseModel):
+    title: Optional[str] = None
     zero_leaks_mode: Optional[bool] = False
     max_row_limit: Optional[int] = 100
 
