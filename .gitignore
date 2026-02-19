@@ -74,3 +74,4 @@ node_modules/
 
 ./dev_run.bash
 .plan
+CHANGES.md

@@ -153,7 +153,10 @@ export const DashboardPage: React.FC = () => {
                     imageData,
                     steps,
                     plan,
-                    related_code: m.related_code
+                    related_code: m.related_code,
+                    prompt_tokens: m.prompt_tokens,
+                    completion_tokens: m.completion_tokens,
+                    total_tokens: m.total_tokens
                 } as Message;
             });
 
@@ -273,6 +276,13 @@ export const DashboardPage: React.FC = () => {
                             setMessages(prev => prev.map(msg =>
                                 msg.id === assistantMsgId
                                     ? { ...msg, steps: [...(msg.steps || []), chunk.data] }
+                                    : msg
+                            ));
+                        }
+                        else if (chunk.type === 'token') {
+                            setMessages(prev => prev.map(msg =>
+                                msg.id === assistantMsgId
+                                    ? { ...msg, content: (msg.content || '') + chunk.data, streamingStatus: 'streaming' as const }
                                     : msg
                             ));
                         }
@@ -454,6 +464,12 @@ export const DashboardPage: React.FC = () => {
                     view={view}
                     onToggleSidebar={toggleSidebar}
                     modelName={modelName}
+                    chatTokenStats={view === 'chat' ? {
+                        total: messages.reduce((acc, m) => acc + (m.total_tokens || 0), 0),
+                        prompt: messages.reduce((acc, m) => acc + (m.prompt_tokens || 0), 0),
+                        completion: messages.reduce((acc, m) => acc + (m.completion_tokens || 0), 0),
+                        messages: messages.filter(m => m.role === 'assistant' && m.total_tokens).length
+                    } : undefined}
                 />
 
                 <div className="flex-1 relative overflow-hidden">

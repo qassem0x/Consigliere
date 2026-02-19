@@ -12,7 +12,7 @@ from app.models.db_models import ChatSettings
 
 from app.services.base_agent import BaseAgent
 from app.services.sql.inference_engine import SemanticInferenceEngine
-from app.core.llm import call_llm
+from app.core.token_tracker import TokenTracker
 from app.services.sql.cache import SQLAgentCache
 from app.services.sql.prompts import (
     SQL_GENERATOR_PROMPT,
@@ -77,7 +77,7 @@ class SQLAgent(BaseAgent):
             + STRICT_SQL_RULES
         )
         messages = [{"role": "system", "content": system_content}]
-        response = call_llm(messages, temperature=0.0)
+        response = self._call_llm_with_usage(messages, temperature=0.0)
         return self._clean_sql(response)
 
     def _fix_sql(self, bad_query: str, error_msg: str) -> str:
@@ -93,7 +93,7 @@ class SQLAgent(BaseAgent):
                 ),
             }
         ]
-        response = call_llm(messages, temperature=0.2)
+        response = self._call_llm_with_usage(messages, temperature=0.2)
         return self._clean_sql(response)
 
     def _clean_sql(self, response: str) -> str:
@@ -179,7 +179,7 @@ class SQLAgent(BaseAgent):
         ]
 
         try:
-            code = call_llm(messages, temperature=0.0, timeout=30)
+            code = self._call_llm_with_usage(messages, temperature=0.0, timeout=30)
             return code
         except Exception as e:
             logger.error(f"Chart code generation failed: {e}")
@@ -274,7 +274,7 @@ class SQLAgent(BaseAgent):
         ]
 
         try:
-            response = call_llm(messages, temperature=0.1, timeout=60)
+            response = self._call_llm_with_usage(messages, temperature=0.1, timeout=60)
 
             if "```" in response:
                 response = response.replace("```json", "").replace("```", "").strip()
@@ -376,7 +376,7 @@ class SQLAgent(BaseAgent):
                 "description": f"Retrieved {len(df)} records",
                 "query": current_sql_used,
             }
-            if step.get("detailed_description"):
+            if step.get("detailed_description") and step.get("type") != "summary":
                 exec_result["detailed_description"] = step["detailed_description"]
         else:
             # Failed after retries
@@ -387,7 +387,7 @@ class SQLAgent(BaseAgent):
                 "type": "error",
                 "data": f"Failed to execute query after {self.max_retries} attempts. Error: {last_error}",
             }
-            if step.get("detailed_description"):
+            if step.get("detailed_description") and step.get("type") != "summary":
                 exec_result["detailed_description"] = step["detailed_description"]
 
         if current_sql_used:
@@ -463,7 +463,7 @@ class SQLAgent(BaseAgent):
             chart_result["step_description"] = step["title"]
             chart_result["step_type"] = "chart"
             chart_result["query"] = current_sql_used
-            if step.get("detailed_description"):
+            if step.get("detailed_description") and step.get("type") != "summary":
                 chart_result["detailed_description"] = step["detailed_description"]
 
             if current_sql_used:
@@ -475,14 +475,16 @@ class SQLAgent(BaseAgent):
 
         except Exception as e:
             logger.error(f"Chart generation error: {e}")
-            return {
+            result = {
                 "step_number": step["step_number"],
                 "step_description": step["title"],
                 "step_type": "error",
                 "type": "error",
                 "data": f"Chart generation failed: {str(e)}",
-                "detailed_description": step.get("detailed_description"),
             }
+            if step.get("detailed_description") and step.get("type") != "summary":
+                result["detailed_description"] = step["detailed_description"]
+            return result
 
     def _execute_summary_step(
         self, step: Dict[str, Any], user_query: str, all_results: List[Dict[str, Any]]
@@ -522,7 +524,7 @@ class SQLAgent(BaseAgent):
             }
         ]
         try:
-            summary_text = call_llm(messages, temperature=0.5, timeout=30)
+            summary_text = self._call_llm_with_usage(messages, temperature=0.5, timeout=30)
             logger.info(f"Step {step['step_number']}: Summary generated successfully")
             return summary_text
         except Exception as e:
@@ -607,7 +609,9 @@ class SQLAgent(BaseAgent):
                     {
                         "type": "step_start",
                         "step_number": step_number,
-                        "description": step.get("title", step.get("description", "Processing...")),
+                        "description": step.get(
+                            "title", step.get("description", "Processing...")
+                        ),
                         "step_type": step_type,
                         "detailed_description": step.get("detailed_description"),
                     }
@@ -638,26 +642,32 @@ class SQLAgent(BaseAgent):
                     "step_type": step_type,
                     "type": "error",
                     "data": f"Unknown step type: {step_type}",
-                    "detailed_description": step.get("detailed_description"),
                 }
+                if step.get("detailed_description") and step_type != "summary":
+                    exec_result["detailed_description"] = step.get("detailed_description")
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
-        # Generate final summary if not already created by summary step
-        if not final_summary_text:
-            final_summary_text = self._format_final_response(
-                enhanced_query, all_results
-            )
-
+        # Generate final summary with streaming if not already created by summary step
         formatted_code = "\n\n".join(all_sqls) if all_sqls else "-- No SQL executed"
 
-        logger.info("Analysis complete, yielding final result")
+        logger.info("Analysis complete, streaming final result")
+
+        # Stream the final response token by token
+        accumulated_text = ""
+        for token in self._stream_final_response(enhanced_query, all_results):
+            accumulated_text += token
+            yield json.dumps({
+                "type": "token",
+                "data": token,
+                "is_final": False,
+            })
 
         yield json.dumps(
             {
                 "type": "final_result",
                 "data": {
-                    "text": final_summary_text,
+                    "text": accumulated_text,
                     "steps": all_results,
                     "plan": plan,
                     "code": formatted_code,
@@ -695,7 +705,7 @@ class SQLAgent(BaseAgent):
                     ),
                 }
             ]
-            response = call_llm(messages, temperature=0.0)
+            response = self._call_llm_with_usage(messages, temperature=0.0)
             clean_response = response.replace("```json", "").replace("```", "").strip()
             return json_repair.loads(clean_response)
         except Exception as e:

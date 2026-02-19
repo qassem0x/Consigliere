@@ -205,6 +205,9 @@ class Message(Base):
     artifacts = Column(JSONB)
     related_code = Column(JSONB)
     steps = Column(JSONB)
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

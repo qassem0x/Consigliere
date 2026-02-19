@@ -1,8 +1,9 @@
 import os
 import uuid
+import logging
 import pandas as pd
 import aiofiles
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -14,13 +15,24 @@ from app.services.ingestion import _transform_to_parquet
 
 router = APIRouter()
 
+MAX_FILE_SIZE = 50 * 1024 * 1024
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 
 @router.post("/files/upload")
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename cannot be empty")
+
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in [".csv", ".xlsx"]:
         raise HTTPException(
@@ -31,14 +43,25 @@ async def upload_file(
     os.makedirs("data", exist_ok=True)
     temp_path = f"data/{temp_filename}"
 
-    # 2. Async Stream Write (Non-Blocking I/O)
+    total_size = 0
     try:
         async with aiofiles.open(temp_path, "wb") as out_file:
-            while content := await file.read(1024 * 1024):  # 1MB Chunks
+            while content := await file.read(1024 * 1024):
+                total_size += len(content)
+                if total_size > MAX_FILE_SIZE:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB",
+                    )
                 await out_file.write(content)
+    except HTTPException:
+        raise
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+        logger.error(f"File upload stream failed: {e}")
         raise HTTPException(status_code=500, detail="File upload stream failed.")
 
     try:
@@ -48,12 +71,13 @@ async def upload_file(
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
+        logger.error(f"File processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"File processing failed: {str(e)}")
 
     new_file = DBFile(
-        filename=file.filename,  # Original User Filename
+        filename=file.filename,
         user_id=user.id,
-        file_path=metadata["filename"],  # Optimized Parquet Filename
+        file_path=metadata["filename"],
         row_count=metadata["rows"],
         columns=metadata["columns"],
     )
@@ -62,7 +86,8 @@ async def upload_file(
     db.commit()
     db.refresh(new_file)
 
-    # Returns exactly what you asked for
+    logger.info(f"User {user.id} uploaded file {new_file.id}")
+
     return {
         "status": "uploaded",
         "file_id": str(new_file.id),
@@ -72,9 +97,10 @@ async def upload_file(
 
 @router.post("/files/{file_id}/analyze")
 def analyze_file(
-    file_id: str, 
+    file_id: str,
     settings: ChatSettingsUpdate = None,
-    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     db_file = (
         db.query(DBFile).filter(DBFile.id == file_id, DBFile.user_id == user.id).first()
@@ -94,7 +120,7 @@ def analyze_file(
         schema = agent.schema
 
     except Exception as e:
-        print(f"AI Error: {e}")
+        logger.error(f"AI Error: {e}")
         raise HTTPException(status_code=500, detail=f"AI Analysis failed: {str(e)}")
 
     new_dossier = Dossier(
@@ -111,7 +137,11 @@ def analyze_file(
         user_id=user.id,
         file_id=db_file.id,
         dossier_id=new_dossier.id,
-        title=settings.title if settings and settings.title else f"Analysis: {db_file.filename}",
+        title=(
+            settings.title
+            if settings and settings.title
+            else f"Analysis: {db_file.filename}"
+        ),
     )
     db.add(new_chat)
     db.commit()

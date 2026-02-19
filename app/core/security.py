@@ -4,7 +4,7 @@ from jose import jwt
 from app.core.config import SECRET_KEY
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 2000
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 

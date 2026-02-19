@@ -14,6 +14,9 @@ class MessageOut(BaseModel):
     content: str
     created_at: datetime
     related_code: Optional[Dict[str, Any]] = None
+    prompt_tokens: Optional[int] = 0
+    completion_tokens: Optional[int] = 0
+    total_tokens: Optional[int] = 0
 
     class Config:
         from_attributes = True

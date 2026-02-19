@@ -1,13 +1,26 @@
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from app.api import files, auth, chats, messages, connections, model
-from app.core.config import DATABASE_URL, get_env
+from app.core.config import get_env
+from app.core.rate_limit import limiter
 from sqlalchemy import create_engine, text
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# CORS for frontend-backend integration (restrict origins in production)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 cors_origins = get_env("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +40,15 @@ app.include_router(connections.router)
 app.include_router(model.router)
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. Please try again later."}
+    )
+
+
 @app.get("/")
 def check_health():
     return {"status": "alive", "system": "Consigliere"}
@@ -34,6 +56,7 @@ def check_health():
 
 @app.get("/db-health")
 def test_db_connection():
+    from app.core.config import DATABASE_URL
     try:
         engine = create_engine(DATABASE_URL)
 
@@ -44,4 +67,5 @@ def test_db_connection():
         return {"status": "connected", "database_version": version}
 
     except Exception as e:
+        logger.error(f"Database health check failed: {e}")
         return {"status": "error", "details": str(e)}

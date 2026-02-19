@@ -23,6 +23,12 @@ export const StreamingStatusIndicator: React.FC<{ status?: string; currentStep?:
                     <span className="font-medium text-foreground">Executing Step {currentStep}</span>
                 </>
             )}
+            {status === 'streaming' && (
+                <>
+                    <Loader2 size={14} className="text-emerald-500 animate-spin" />
+                    <span className="font-medium text-foreground">Generating response...</span>
+                </>
+            )}
             {status === 'error' && (
                 <>
                     <AlertCircle size={14} className="text-destructive" />
@@ -116,7 +122,7 @@ export const TimelineStep: React.FC<{ step: StepResult; isLast: boolean; onImage
                     {step.step_description}
                 </div>
 
-                {step.detailed_description && (
+                {step.detailed_description && step.step_type !== 'summary' && (
                     <div className="text-xs text-muted-foreground font-mono leading-relaxed">
                         {step.detailed_description}
                     </div>
@@ -203,9 +209,17 @@ export const ImageGridStep: React.FC<{ steps: StepResult[]; isLast: boolean; onI
                                     />
                                 </div>
                             </div>
-                            <span className="text-[9px] text-muted-foreground font-mono pl-1 truncate">
+                            <span 
+                                className="text-[10px] text-slate-300 font-mono pl-1 pt-1 leading-snug line-clamp-2 block"
+                                title={`Fig ${step.step_number}: ${step.step_description}`}
+                            >
                                 Fig {step.step_number}: {step.step_description}
                             </span>
+                            {step.detailed_description && step.step_type !== 'summary' && (
+                                <span className="text-[9px] text-muted-foreground font-mono pl-1 leading-snug break-words block">
+                                    {step.detailed_description}
+                                </span>
+                            )}
                         </div>
                     ))}
                 </div>

@@ -57,6 +57,9 @@ export interface Message {
         type: string;
         code: string;
     } | null;
-    streamingStatus?: 'planning' | 'processing' | 'complete' | 'error' | 'cancelled';
+    streamingStatus?: 'planning' | 'processing' | 'streaming' | 'complete' | 'error' | 'cancelled';
     currentStep?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
 }

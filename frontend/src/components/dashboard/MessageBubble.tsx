@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Rose, User, Layers } from 'lucide-react';
+import { Rose, User, Layers, Zap, Coins } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Message } from '../../types';
 import { MessageSteps, StreamingStatusIndicator } from './MessageSteps';
@@ -17,6 +17,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx, sho
     const isAssistant = msg.role === 'assistant';
     const hasSteps = msg.steps && msg.steps.length > 0;
     const isStreaming = msg.streamingStatus && msg.streamingStatus !== 'complete';
+    const hasTokenUsage = msg.total_tokens !== undefined && msg.total_tokens > 0;
 
     return (
             <div
@@ -73,6 +74,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx, sho
                         >
                             {msg.content}
                         </ReactMarkdown>
+
+                        {/* Token Usage Display */}
+                        {isAssistant && hasTokenUsage && (
+                            <div className="mt-3 pt-2 border-t border-border/30 flex items-center gap-3 text-[10px] text-muted-foreground/70">
+                                <div className="flex items-center gap-1 bg-muted/50 px-2 py-1 rounded">
+                                    <Zap size={10} className="text-amber-500" />
+                                    <span className="font-medium">{msg.total_tokens?.toLocaleString()}</span>
+                                    <span className="text-muted-foreground/60">tokens</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-muted-foreground/50">
+                                    <span>IN: {msg.prompt_tokens?.toLocaleString()}</span>
+                                    <span className="text-border">|</span>
+                                    <span>OUT: {msg.completion_tokens?.toLocaleString()}</span>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {isAssistant && hasSteps && !showSteps && (

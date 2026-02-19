@@ -71,7 +71,10 @@ CREATE TABLE messages (
     content TEXT NOT NULL,                
     artifacts JSONB,
     related_code JSONB,                   
-    steps JSONB,                          
+    steps JSONB,
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

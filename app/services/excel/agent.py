@@ -22,6 +22,7 @@ from app.core.prompts import (
 from app.services.excel.cache import DataCache
 from app.services.excel.inference_engine import ExcelInferenceEngine
 from app.core.llm import call_llm
+from app.core.token_tracker import TokenTracker
 from app.core.config import validate_env
 from app.models.db_models import ChatSettings
 
@@ -64,7 +65,7 @@ class ExcelDataAgent(BaseAgent):
         ]
 
         try:
-            response = call_llm(messages, temperature=0.1, timeout=60)
+            response = self._call_llm_with_usage(messages, temperature=0.1, timeout=60)
 
             if "```" in response:
                 response = response.replace("```json", "").replace("```", "").strip()
@@ -137,7 +138,7 @@ class ExcelDataAgent(BaseAgent):
         ]
 
         try:
-            code = call_llm(messages, temperature=0.0, timeout=60)
+            code = self._call_llm_with_usage(messages, temperature=0.0, timeout=60)
             return code
         except Exception as e:
             print(
@@ -438,15 +439,15 @@ class ExcelDataAgent(BaseAgent):
         all_code = []
 
         for step in plan_steps:
-            yield json.dumps(
-                {
-                    "type": "step_start",
-                    "step_number": step["step_number"],
-                    "description": step["title"],
-                    "step_type": step["type"],
-                    "detailed_description": step.get("detailed_description"),
-                }
-            )
+            step_start = {
+                "type": "step_start",
+                "step_number": step["step_number"],
+                "description": step["title"],
+                "step_type": step["type"],
+            }
+            if step.get("detailed_description") and step["type"] != "summary":
+                step_start["detailed_description"] = step["detailed_description"]
+            yield json.dumps(step_start)
 
             # Generate Code
             raw_code = self._generate_step_code(user_query, step, all_results)
@@ -472,15 +473,22 @@ class ExcelDataAgent(BaseAgent):
             exec_result["step_number"] = step["step_number"]
             exec_result["step_description"] = step["title"]
             exec_result["step_type"] = step["type"]
-            if step.get("detailed_description"):
+            if step.get("detailed_description") and step["type"] != "summary":
                 exec_result["detailed_description"] = step["detailed_description"]
 
             all_results.append(exec_result)
 
             yield json.dumps({"type": "step_result", "data": exec_result})
 
-        # 4. Final Summary
-        summary = self._format_final_response(user_query, all_results)
+        # 4. Final Summary - Stream token by token
+        accumulated_text = ""
+        for token in self._stream_final_response(user_query, all_results):
+            accumulated_text += token
+            yield json.dumps({
+                "type": "token",
+                "data": token,
+                "is_final": False,
+            })
 
         # Construct full code log
         code_log = ""
@@ -494,7 +502,7 @@ class ExcelDataAgent(BaseAgent):
             {
                 "type": "final_result",
                 "data": {
-                    "text": summary,
+                    "text": accumulated_text,
                     "steps": all_results,
                     "plan": brain_output,  # Return full brain output context
                     "code": code_log,
@@ -559,7 +567,7 @@ class ExcelDataAgent(BaseAgent):
         ]
 
         try:
-            response_text = call_llm(messages, temperature=0.4, timeout=60)
+            response_text = self._call_llm_with_usage(messages, temperature=0.4, timeout=60)
 
             if "```" in response_text:
                 response_text = (

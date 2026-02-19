@@ -5,8 +5,13 @@ from app.core.config import DATABASE_URL, validate_env
 
 validate_env()
 
-print("DATABASE::URL:", DATABASE_URL)  # Debugging line to check the DATABASE_URL
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=5,
+    max_overflow=10,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

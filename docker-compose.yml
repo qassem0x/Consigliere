@@ -1,17 +1,25 @@
 services:
-  # backend:
-  #   build: .
-  #   container_name: consigliere_api
-  #   ports:
-  #     - "8000:8000"
-  #   volumes:
-  #     - ./app:/code/app        
-  #     - ./data:/code/data      
-  #     - ./static:/code/static
-  #   environment:
-  #     - DATABASE_URL=postgresql://user:password@db:5432/consigliere
-  #   depends_on:
-  #     - db
+  backend:
+    build: .
+    container_name: consigliere_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/code/app
+      - ./data:/code/data
+      - ./static:/code/static
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://user:password@db:5432/consigliere}
+      - SECRET_KEY=${SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      - MODEL_NAME=${MODEL_NAME:-groq/llama-3.3-70b-versatile}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
 
   db:
     image: postgres:15-alpine
@@ -19,23 +27,30 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=consigliere
+      - POSTGRES_USER=${POSTGRES_USER:-user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - POSTGRES_DB=${POSTGRES_DB:-consigliere}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./app/database/schema.sql:/docker-entrypoint-initdb.d/init.sql
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   pgadmin:
     image: dpage/pgadmin4
     container_name: consigliere_pgadmin
     restart: always
     ports:
-      - "5050:80"  # Access via http://localhost:5050
+      - "5050:80"
     environment:
-      PGADMIN_DEFAULT_EMAIL: "admin@admin.com"
-      PGADMIN_DEFAULT_PASSWORD: "admin"
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
     depends_on:
       - db
+
 volumes:
   postgres_data:

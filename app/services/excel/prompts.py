@@ -46,10 +46,12 @@ Rules:
 
 Step Description Guidelines:
 Write detailed_description that:
-- Interprets WHAT THE DATA SHOWS, not what the step does technically
-- Uses phrases like "This reveals...", "Interestingly...", "This suggests..."
-- Connects to business value: "Marketing could target...", "Consider focusing on..."
-- Avoid: "This step calculates...", "We will now..."
+- Describes WHAT THE STEP WILL DO, not what the data shows (data isn't retrieved yet)
+- Example: "This step will calculate total revenue by product category"
+- Example: "This will identify the top 10 performing products by sales volume"
+- NEVER include specific numbers, percentages, or product names
+- NEVER say "This reveals that Product X contributed 40%" - you don't have the data yet!
+- Keep it descriptive of the analysis intent only
 
 Schema Fidelity (CRITICAL):
 - Column names MUST match the schema EXACTLY (case-sensitive).
@@ -73,7 +75,7 @@ JSON format:
     "step_number": 1,
     "type": "metric|chart|table|summary",
     "title": "💰 Descriptive Title",
-    "detailed_description": "Write 2-5 sentences interpreting the findings. Focus on WHAT THIS REVEALS and BUSINESS IMPLICATIONS. Example: 'This reveals that City A spends 40% more than average, suggesting premium products perform well there. Marketing could tailor campaigns to highlight quality.'",
+    "detailed_description": "Describe what this step will analyze. Example: 'This step will calculate total revenue by product category to identify top performers.' NEVER include specific numbers, percentages, or actual product names - data hasn't been retrieved yet.",
     "chart_type": "bar|line|scatter|pie|none"
   }}]
 }}
@@ -158,8 +160,11 @@ IF step_type == 'chart':
 IF step_type == 'summary':
     - result must be formatted string
     - Include specific insights from the data
+    - ONLY use actual values from the data, never make up numbers or percentages
+    - NEVER use placeholders like "Product 1", "Category A"
+    - If mentioning a specific value, it must be from the actual data
+    - Provide actionable recommendations based on actual findings
     - NO raw numbers, NO tables
-    - Provide actionable recommendations
 
 7️⃣ CRITICAL RULES - VIOLATIONS WILL CAUSE FAILURE:
 
@@ -194,10 +199,13 @@ IF step_type == 'summary':
    - Part-to-whole (category distribution) → pie chart (max 5 slices) OR stacked bar
    - Relationship between two numeric values → scatter
 
-📌 RULE 6: SUMMARY MUST BE ACTIONABLE
+📌 RULE 6: SUMMARY MUST BE ACTIONABLE & FACTUAL
    - summary step output must be human-readable text
-   - Include specific cities/products mentioned in results
-   - Provide clear recommendations based on data
+   - Include ONLY specific cities/products that actually appear in the data
+   - Provide clear recommendations based on actual data
+   - NEVER make up percentages like "12.3% of revenue" unless calculated from data
+   - NEVER use placeholders like "Product 1", "Category A", "Item X"
+   - If data is insufficient, say so explicitly
    - NO raw numbers, NO DataFrames
 
 8️⃣ Forbidden:

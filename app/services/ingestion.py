@@ -1,7 +1,14 @@
 import pandas as pd
 import os
+import logging
 from fastapi import HTTPException
 import uuid
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
 def _transform_to_parquet(temp_file_path: str, original_filename: str):
@@ -30,14 +37,16 @@ def _transform_to_parquet(temp_file_path: str, original_filename: str):
 
         metadata = {
             "file_id": file_uuid,
-            "filename": parquet_filename,  # The system name (UUID.parquet)
+            "filename": parquet_filename,
             "rows": df.shape[0],
             "columns": list(df.columns),
         }
 
+        logger.info(f"Transformed {original_filename} to {parquet_filename}")
         return metadata
 
     except Exception as e:
+        logger.error(f"Error transforming file {original_filename}: {e}")
         raise e
     finally:
         if os.path.exists(temp_file_path):

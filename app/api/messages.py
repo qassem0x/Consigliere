@@ -1,5 +1,6 @@
 import asyncio
 import os
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -13,6 +14,8 @@ from app.services.excel.agent import ExcelDataAgent
 from app.services.sql.agent import SQLAgent
 from cryptography.fernet import Fernet
 import json
+
+logger = logging.getLogger(__name__)
 
 validate_env()
 
@@ -39,12 +42,18 @@ def get_chat_history(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    return (
-        db.query(Message)
-        .filter(Message.chat_id == chat_id)
-        .order_by(Message.created_at.asc())
-        .all()
-    )
+    messages = db.query(Message).filter(Message.chat_id == chat_id).order_by(Message.created_at.asc()).all()
+    
+    logger.info(f"Retrieved {len(messages)} messages for chat {chat_id}")
+    if messages:
+        last_msg = messages[-1]
+        logger.info(f"Last message tokens: prompt={last_msg.prompt_tokens}, completion={last_msg.completion_tokens}, total={last_msg.total_tokens}")
+        
+        # Debug: Check what MessageOut serializes
+        msg_out = MessageOut.model_validate(last_msg)
+        logger.info(f"MessageOut serialized: prompt_tokens={msg_out.prompt_tokens}, completion_tokens={msg_out.completion_tokens}, total_tokens={msg_out.total_tokens}")
+    
+    return messages
 
 
 @router.post("/messages/{chat_id}", response_model=MessageOut)
@@ -162,6 +171,7 @@ async def send_message(
                 await asyncio.sleep(0.01)
 
             if generation_completed:
+                token_usage = agent.token_tracker.to_dict()
                 with SessionLocal() as db_session:
                     assistant_msg = Message(
                         chat_id=chat_id,
@@ -178,6 +188,9 @@ async def send_message(
                             "code": final_response["code"],
                         },
                         steps=final_response["steps"],
+                        prompt_tokens=token_usage.get("prompt_tokens", 0),
+                        completion_tokens=token_usage.get("completion_tokens", 0),
+                        total_tokens=token_usage.get("total_tokens", 0),
                     )
                     db_session.add(assistant_msg)
                     db_session.commit()
