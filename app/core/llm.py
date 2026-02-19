@@ -1,16 +1,14 @@
 import os
-import dotenv
 from litellm import completion
 import litellm
 from tenacity import retry, stop_after_attempt, wait_exponential
+from app.core.config import MODEL_NAME, validate_env
 
-dotenv.load_dotenv()
+validate_env()
 
 litellm.drop_params = True
 litellm.set_verbose = False
 litellm.suppress_debug_info = True
-
-MODEL_NAME = os.getenv("MODEL_NAME", "ollama/llama2:7b")
 
 if MODEL_NAME.startswith("ollama"):
     litellm.api_base = "http://localhost:11434"

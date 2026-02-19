@@ -11,7 +11,6 @@ import logging
 from app.models.db_models import ChatSettings
 
 from app.services.sql.inference_engine import SemanticInferenceEngine
-from app.services.base_agent import BaseAgent
 from app.core.llm import call_llm
 from app.services.sql.cache import SQLAgentCache
 from app.services.sql.prompts import (
@@ -32,9 +31,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class SQLAgent(BaseAgent):
+class SQLAgent:
     def __init__(self, connection_string: str, chat_settings: ChatSettings):
-        super().__init__()
         self.connection_string = connection_string
         if chat_settings is not None:
             self.chat_settings = chat_settings

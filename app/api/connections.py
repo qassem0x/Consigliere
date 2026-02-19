@@ -7,17 +7,14 @@ from app.models.db_models import Chat, Dossier, User, ChatSettings
 from app.models.connections import ConnectionCreate, ConnectionOut
 from app.models.db_models import Connection
 from app.core.database import get_db
+from app.core.config import ENCRYPTION_KEY, validate_env
 from cryptography.fernet import Fernet
-from dotenv import load_dotenv
-import os
-
 from app.services.sql.agent import SQLAgent
 
-load_dotenv()
+validate_env()
 
 router = APIRouter()
 
-ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 if not ENCRYPTION_KEY:
     raise ValueError("ENCRYPTION_KEY not found in environment variables")
 fernet = Fernet(

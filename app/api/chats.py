@@ -146,10 +146,9 @@ def delete_chat(
         if encrypted_conn_str:
             try:
                 from cryptography.fernet import Fernet
-                import os
+                from app.core.config import ENCRYPTION_KEY
 
-                encryption_key = os.getenv("ENCRYPTION_KEY")
-                fernet = Fernet(encryption_key.encode())
+                fernet = Fernet(ENCRYPTION_KEY.encode())
 
                 if isinstance(encrypted_conn_str, str):
                     encrypted_conn_str = encrypted_conn_str.encode()

@@ -3,7 +3,6 @@ import uuid
 import pandas as pd
 import re
 import os
-import dotenv
 import io
 import contextlib
 import matplotlib.pyplot as plt
@@ -19,16 +18,16 @@ from app.core.prompts import (
     ANALYSIS_FORMAT_PROMPT,
     DOSSIER_PROMPT,
 )
-from app.services.base_agent import BaseAgent
 from app.services.excel.cache import DataCache
 from app.services.excel.inference_engine import ExcelInferenceEngine
 from app.core.llm import call_llm
+from app.core.config import validate_env
 from app.models.db_models import ChatSettings
 
-dotenv.load_dotenv()
+validate_env()
 
 
-class ExcelDataAgent(BaseAgent):
+class ExcelDataAgent:
     def __init__(self, file_path: str, chat_settings: Optional[ChatSettings] = None):
         print(f"DEBUG: Initializing ExcelDataAgent for {file_path}")
 

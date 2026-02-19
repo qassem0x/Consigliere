@@ -5,18 +5,16 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from app.core.database import SessionLocal, get_db
 from app.core.deps import get_current_user
+from app.core.config import ENCRYPTION_KEY, validate_env
 from app.models.db_models import User, Chat, Message, ChatSettings
 from app.models.messages import MessageCreate, MessageOut
 from app.services.excel.agent import ExcelDataAgent
 from app.services.sql.agent import SQLAgent
 from cryptography.fernet import Fernet
-from dotenv import load_dotenv
 import json
-import os
 
-load_dotenv()
+validate_env()
 
-ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 if not ENCRYPTION_KEY:
     raise ValueError("ENCRYPTION_KEY not found in environment variables")
 fernet = Fernet(
