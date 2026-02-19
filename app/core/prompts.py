@@ -13,7 +13,11 @@ if zero_leaks_mode is false only do that:
   3. Business implications
   4. 2-3 recommendations
 
-Plain text only. don't explictly mention tech details like zero leaks mode 
+if zero_leaks_mode is true do that:
+  explain the analysis steps in simple way for user, don't dive in tech details
+
+Professional tone, use markdown and separate sections with new line.
+don't explicitly mention tech details like zero leaks mode 
 """
 
 ANALYSIS_FORMAT_PROMPT = """
@@ -31,8 +35,8 @@ if zero_leaks_mode is false only do that:
 if zero_leaks_mode is true do that:
   explain every step in combined summary, but in simple way for user don't dive in tech details
 
-Professional tone, use markdown and seperate sections with new line.
-don't explictly mention tech details like zero leaks mode 
+Professional tone, use markdown and separate sections with new line.
+don't explicitly mention tech details like zero leaks mode 
 """
 
 DOSSIER_PROMPT = """
