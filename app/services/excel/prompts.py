@@ -149,6 +149,11 @@ IF step_type == 'table':
         - pandas DataFrame
         - limited to MAX 20 rows
     IMPORTANT: Include relevant columns for insights, not just numeric
+    IMPORTANT - Column Priority:
+    - Prioritize showing descriptive columns like 'name', 'title', 'description', 'email', 'address', 'phone' over 'id', 'uuid', 'created_at', 'updated_at'
+    - If data has both 'id' and 'name', show 'name' and omit 'id' unless explicitly requested
+    - Show columns that tell a story, not just technical identifiers
+    - Reorder columns: most important descriptive columns first
 
 IF step_type == 'chart':
     - Use plt.style.use('dark_background')
@@ -207,6 +212,11 @@ IF step_type == 'summary':
    - NEVER use placeholders like "Product 1", "Category A", "Item X"
    - If data is insufficient, say so explicitly
    - NO raw numbers, NO DataFrames
+
+📌 RULE 7: NUMERIC FORMATTING
+   - Round ALL float numbers to 2 decimal places
+   - Use round(value, 2) or .round(2) for all numeric calculations
+   - Displayed values must have max 2 decimal points (e.g., 123.45, not 123.456789)
 
 8️⃣ Forbidden:
 - os

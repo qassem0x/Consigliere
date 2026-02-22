@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from slowapi import Limiter
@@ -7,7 +7,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.db_models import User
 from app.core import security
-from app.models.auth import UserCreate, Token, UserResponse
+from app.models.auth import UserCreate, Token, TokenRefresh, UserResponse
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -33,7 +33,8 @@ def register(request: Request, user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
 
     access_token = security.create_access_token(data={"sub": str(new_user.id)})
-    return {"access_token": access_token, "token_type": "bearer"}
+    refresh_token = security.create_refresh_token(data={"sub": str(new_user.id)})
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
 @router.post("/login", response_model=Token)
@@ -54,10 +55,25 @@ def login(
             detail="Account is disabled",
         )
     access_token = security.create_access_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "token_type": "bearer"}
+    refresh_token = security.create_refresh_token(data={"sub": str(user.id)})
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get the current authenticated user's information"""
     return current_user
+
+
+@router.post("/refresh", response_model=TokenRefresh)
+def refresh_token(current_user: User = Depends(get_current_user)):
+    """Refresh access token using refresh token"""
+    access_token = security.create_access_token(data={"sub": str(current_user.id)})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/logout")
+def logout(token: str = Query(...), current_user: User = Depends(get_current_user)):
+    """Logout by blacklisting the current access token"""
+    security.add_to_blacklist(token)
+    return {"message": "Successfully logged out"}

@@ -66,6 +66,7 @@ static/
 *.pem
 *.key
 
+todo.md
 todo
 
 ./frontend/.node_modulesfrontend/node_modules/

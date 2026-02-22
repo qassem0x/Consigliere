@@ -197,7 +197,15 @@ async def send_message(
                     db_session.refresh(assistant_msg)
 
                     yield json.dumps(
-                        {"type": "final", "message_id": str(assistant_msg.id)}
+                        {
+                            "type": "final",
+                            "message_id": str(assistant_msg.id),
+                            "token_usage": {
+                                "prompt_tokens": token_usage.get("prompt_tokens", 0),
+                                "completion_tokens": token_usage.get("completion_tokens", 0),
+                                "total_tokens": token_usage.get("total_tokens", 0),
+                            }
+                        }
                     )
 
         except asyncio.CancelledError:

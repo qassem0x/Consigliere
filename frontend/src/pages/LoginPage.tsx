@@ -4,11 +4,12 @@ import { Mail, LockKeyhole, AlertCircle, Loader2 } from 'lucide-react';
 import { AuthLayout, InputGroup } from '../components';
 import { useTranslation } from '../contexts/TranslationContext';
 import { api } from '../utils/api'; 
-import {useAuth} from "../contexts/AuthContext"
+import { useAuth } from "../contexts/AuthContext"
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   
@@ -32,10 +33,8 @@ export const LoginPage: React.FC = () => {
       });
 
       if (res.status === 200) {
-        const { access_token } = res.data;
-        localStorage.setItem('token', access_token);
-        
-        navigate('/');
+        const { access_token, refresh_token } = res.data;
+        await login(access_token, refresh_token);
       }
     } catch (err: any) {
       console.error('Login failed:', err);

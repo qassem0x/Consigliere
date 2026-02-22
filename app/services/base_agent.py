@@ -172,12 +172,18 @@ class BaseAgent(ABC):
         code: Optional[str] = None,
     ) -> str:
         """Yield final_result JSON for streaming response."""
+        token_usage = self.token_tracker.to_dict()
         data = {
             "type": "final_result",
             "data": {
                 "text": text,
                 "steps": steps,
                 "code": code,
+                "token_usage": {
+                    "prompt_tokens": token_usage.get("prompt_tokens", 0),
+                    "completion_tokens": token_usage.get("completion_tokens", 0),
+                    "total_tokens": token_usage.get("total_tokens", 0),
+                }
             },
         }
         if plan:

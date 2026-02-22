@@ -289,21 +289,19 @@ export const DashboardPage: React.FC = () => {
                         else if (chunk.type === 'final_result') {
                             receivedFinalResult = true;
                             setMessages(prev => prev.map(msg =>
-                                msg.id === assistantMsgId
+                                msg.id === assistantMsgId || msg.streamingStatus === 'complete'
                                     ? {
                                         ...msg,
                                         content: chunk.data.text,
                                         steps: chunk.data.steps || [],
                                         plan: chunk.data.plan || null,
                                         related_code: chunk.data.code ? { type: 'python', code: chunk.data.code } : null,
-                                        streamingStatus: 'complete' as const
+                                        streamingStatus: 'complete' as const,
+                                        total_tokens: chunk.data.token_usage?.total_tokens,
+                                        prompt_tokens: chunk.data.token_usage?.prompt_tokens,
+                                        completion_tokens: chunk.data.token_usage?.completion_tokens,
                                     }
                                     : msg
-                            ));
-                        }
-                        else if (chunk.type === 'final') {
-                            setMessages(prev => prev.map(msg =>
-                                msg.id === assistantMsgId ? { ...msg, id: chunk.message_id } : msg
                             ));
                         }
                         else if (chunk.type === 'error') {

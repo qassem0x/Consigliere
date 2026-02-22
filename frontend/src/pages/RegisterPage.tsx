@@ -36,9 +36,8 @@ export const RegisterPage: React.FC = () => {
       const res = await api.post('/auth/register', payload);
 
       if (res.status === 201) {
-        await login(res.data.access_token);
-        
-        navigate('/'); 
+        const { access_token, refresh_token } = res.data;
+        await login(access_token, refresh_token);
       }
     } catch (err: any) {
       console.error('Registration failed:', err);

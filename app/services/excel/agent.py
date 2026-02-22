@@ -498,14 +498,20 @@ class ExcelDataAgent(BaseAgent):
                 code_log += all_code[i] + "\n\n"
             code_log += "=" * 50 + "\n\n"
 
+        token_usage = self.token_tracker.to_dict()
         yield json.dumps(
             {
                 "type": "final_result",
                 "data": {
                     "text": accumulated_text,
                     "steps": all_results,
-                    "plan": brain_output,  # Return full brain output context
+                    "plan": brain_output,
                     "code": code_log,
+                    "token_usage": {
+                        "prompt_tokens": token_usage.get("prompt_tokens", 0),
+                        "completion_tokens": token_usage.get("completion_tokens", 0),
+                        "total_tokens": token_usage.get("total_tokens", 0),
+                    }
                 },
             }
         )

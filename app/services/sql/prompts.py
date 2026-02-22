@@ -51,6 +51,11 @@ CRITICAL RULES:
    - Rotate long x-labels: xticks(rotation=45, ha='right')
    - Aggregate/sort/limit data appropriately
 
+📌 RULE 5: NUMERIC FORMATTING
+   - Round ALL float numbers to 2 decimal places
+   - Use round(value, 2) or .round(2) for all numeric calculations
+   - Displayed values must have max 2 decimal points (e.g., 123.45, not 123.456789)
+
 Chart types:
 - bar: plt.bar() or df.plot.bar()
 - line: plt.plot() or df.plot.line()
@@ -74,7 +79,13 @@ Rules:
 5. Add GROUP BY for aggregations
 6. Default LIMIT 1000
 7. If column missing, check schema or return error
-8.Only return columns that provide meaningful, human-readable information. Omit internal identifiers, primary/foreign keys, and other technical fields unless explicitly requested.
+8. Only return columns that provide meaningful, human-readable information. Omit internal identifiers, primary/foreign keys, and other technical fields unless explicitly requested.
+
+IMPORTANT - Column Priority:
+- Prioritize showing descriptive columns like 'name', 'title', 'description', 'email', 'address', 'phone' over 'id', 'uuid', 'created_at', 'updated_at', 'modified_date'
+- If a table has both 'id' and 'name', SELECT 'name' first and omit 'id' unless explicitly requested
+- Show columns that tell a story, not just technical identifiers
+- Order columns: most important descriptive columns first
 
 Return SQL only (no markdown).
 """

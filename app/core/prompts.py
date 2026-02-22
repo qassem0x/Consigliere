@@ -1,61 +1,53 @@
 SUMMARY_SYNTHESIS_PROMPT = """
-Synthesize findings into executive insights.
+You're a data storyteller. Help someone understand their data through natural conversation.
 
 User Query: {user_query}
 Data: {context_str}
 Instructions: {step_description}
 zero_leaks_mode: {zero_leaks_mode}
 
-CRITICAL ANTI-HALLUCINATION RULES:
-1. ONLY cite numbers that appear in the Data section above
-2. NEVER invent product names, categories, percentages, or trends
-3. NEVER use placeholders like "Product 1", "Category A", "Item X"
-4. Only mention specific values that are explicitly in the data
-5. If data doesn't support a conclusion, don't state it
-6. Use exact values from Data: section - no rounding or approximations unless specified
-7. If data is limited, acknowledge: "Based on the available data showing [actual values]..."
+RULES:
+1. ONLY use numbers from the Data above
+2. Never invent product names, categories, percentages, or trends
+3. Never use placeholders like "Product 1", "Category A"
+4. If data doesn't support a conclusion, don't state it
 
-Provide 3-5 sentence summary:
-1. What was analyzed
-if zero_leaks_mode is false only do that:
-  2. Key findings with numbers (from Data only)
-  3. Business implications (supported by data)
-  4. 2-3 recommendations (based on actual findings)
+Write naturally - like you're explaining to a colleague. No rigid sections or bullet lists. Just tell them what you found in a flowing narrative.
 
-if zero_leaks_mode is true do that:
-  explain the analysis steps in simple way for user, don't dive in tech details
+If zero_leaks_mode is false:
+- Tell them what you analyzed
+- Share the key numbers and findings
+- End with one practical suggestion
 
-Professional tone, use markdown and separate sections with new line.
-don't explicitly mention tech details like zero leaks mode 
+If zero_leaks_mode is true:
+- Explain in simple terms what steps you took
+- Keep it conversational, skip the technical details
 """
 
 ANALYSIS_FORMAT_PROMPT = """
-Synthesize data findings for executives.
+You're a data storyteller helping someone understand their data. 
 
 Query: {user_query}
 Data: {combined_summary}
 zero_leaks_mode: {zero_leaks_mode}
 
-CRITICAL ANTI-HALLUCINATION RULES:
-1. ONLY use numbers and facts that appear in the Data section above
-2. NEVER make up product names, categories, or percentages
-3. NEVER use placeholders like "Product 1", "Category 1", "Item A"
-4. If a specific value isn't in the data, don't mention it
-5. If you're unsure about a number, check the Data section again
-6. It's better to say "The data shows..." with exact values than to generalize
-7. If data is insufficient, explicitly state: "The available data shows [actual values], but additional information would be needed to..."
+RULES:
+1. ONLY use numbers and facts from the Data above
+2. Never invent product names, categories, percentages, or trends
+3. Never use placeholders like "Product 1", "Category A"
+4. If data doesn't support something, don't state it
 
-Provide 3-5 sentences:
-1. What was analyzed
-if zero_leaks_mode is false only do that:
-  2. Key findings from data summary (cite exact numbers from Data)
-  3. Suggest Next questions
+Write naturally - like you're explaining to a colleague what you found. No rigid sections or bullet lists. Just tell them what you discovered in a flowing narrative. 
 
-if zero_leaks_mode is true do that:
-  explain every step in combined summary, but in simple way for user don't dive in tech details
+If zero_leaks_mode is false:
+- Tell them what you analyzed
+- Share the key numbers and findings (straight from the data, no fluff)
+- End with one practical suggestion or question they could explore next
 
-Professional tone, use markdown and separate sections with new line.
-don't explicitly mention tech details like zero leaks mode 
+If zero_leaks_mode is true:
+- Explain the analysis in simple terms, like what steps you took and why
+- Keep it conversational, skip the technical details
+- Make it feel like you're walking them through what you did
 """
 
 DOSSIER_PROMPT = """

@@ -524,7 +524,9 @@ class SQLAgent(BaseAgent):
             }
         ]
         try:
-            summary_text = self._call_llm_with_usage(messages, temperature=0.5, timeout=30)
+            summary_text = self._call_llm_with_usage(
+                messages, temperature=0.5, timeout=30
+            )
             logger.info(f"Step {step['step_number']}: Summary generated successfully")
             return summary_text
         except Exception as e:
@@ -644,7 +646,9 @@ class SQLAgent(BaseAgent):
                     "data": f"Unknown step type: {step_type}",
                 }
                 if step.get("detailed_description") and step_type != "summary":
-                    exec_result["detailed_description"] = step.get("detailed_description")
+                    exec_result["detailed_description"] = step.get(
+                        "detailed_description"
+                    )
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
@@ -657,12 +661,15 @@ class SQLAgent(BaseAgent):
         accumulated_text = ""
         for token in self._stream_final_response(enhanced_query, all_results):
             accumulated_text += token
-            yield json.dumps({
-                "type": "token",
-                "data": token,
-                "is_final": False,
-            })
+            yield json.dumps(
+                {
+                    "type": "token",
+                    "data": token,
+                    "is_final": False,
+                }
+            )
 
+        token_usage = self.token_tracker.to_dict()
         yield json.dumps(
             {
                 "type": "final_result",
@@ -671,6 +678,11 @@ class SQLAgent(BaseAgent):
                     "steps": all_results,
                     "plan": plan,
                     "code": formatted_code,
+                    "token_usage": {
+                        "prompt_tokens": token_usage.get("prompt_tokens", 0),
+                        "completion_tokens": token_usage.get("completion_tokens", 0),
+                        "total_tokens": token_usage.get("total_tokens", 0),
+                    }
                 },
             }
         )
