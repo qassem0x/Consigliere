@@ -1,10 +1,46 @@
 STRICT_SQL_RULES = """
-CRITICAL SYNTAX RULES:
-1. UNION/UNION ALL with LIMIT/ORDER BY needs parentheses: (SELECT * FROM a LIMIT 5) UNION ALL (SELECT * FROM b LIMIT 5)
-2. Prefer CTEs (WITH clause) over nested subqueries
-3. Match schema table/column names exactly
-4. Use explicit JOINs with proper ON conditions
+CRITICAL SQL RULES:
+
+1. SELECT ONLY
+   - No INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE.
+
+2. UNION / UNION ALL
+   - When using ORDER BY or LIMIT with UNION, wrap each SELECT in parentheses:
+     (SELECT ... LIMIT 5) UNION ALL (SELECT ... LIMIT 5)
+
+3. Prefer CTEs
+   - Use WITH clauses for complex aggregations instead of deeply nested subqueries.
+   - Use multiple CTE layers when calculating baseline + comparison metrics.
+
+4. Explicit JOINs ONLY
+   - Always use explicit JOIN ... ON ...
+   - Never use implicit comma joins.
+   - Ensure correct foreign key relationships.
+
+5. Schema Fidelity
+   - Match table and column names EXACTLY (case-sensitive).
+   - Do not guess column names.
+   - If a required column is missing → return an error.
+
+6. Aggregation Discipline
+   - When using SUM, COUNT, AVG → always include proper GROUP BY.
+   - Never mix aggregated and non-aggregated columns without GROUP BY.
+
+7. Human-Readable Output
+   - Prioritize descriptive columns (name, title, email, category).
+   - Omit technical identifiers unless explicitly requested.
+   - Order columns logically: descriptive first, metrics after.
+
+8. Smart Analytics Logic
+   - When ranking → use ORDER BY + LIMIT.
+   - When analyzing distribution → compute share-of-total using window functions.
+   - When analyzing trends → calculate growth rates if time dimension exists.
+   - When relevant, calculate percentage contribution.
+
+9. Default Safety
+   - Always apply LIMIT 1000 unless user specifies otherwise.
 """
+
 
 SQL_FIX_PROMPT = """
 Fix this failed SQL query for {target_db}.
@@ -14,9 +50,73 @@ Failed Query: {query}
 Schema: {schema}
 
 Instructions:
-1. Analyze the error (UNION needs parentheses, check column names/case)
-2. Return ONLY the corrected SQL query (no markdown, no explanations)
+
+1. Analyze the root cause of the error:
+   - Syntax issue?
+   - UNION parentheses?
+   - Missing GROUP BY?
+   - Incorrect column/table name?
+   - Join ambiguity?
+   - Dialect quoting issue?
+
+2. Correct the query while preserving the original analytical intent.
+
+3. Ensure:
+   - SELECT only
+   - Schema names match EXACTLY
+   - Proper GROUP BY usage
+   - Correct JOIN conditions
+   - Default LIMIT 1000 if none provided
+
+Return ONLY the corrected SQL query.
+No markdown.
+No explanation.
 """
+
+
+SQL_GENERATOR_PROMPT = """
+Convert to SQL for {target_db}.
+
+Schema: {schema}
+Request: "{query}"
+
+OBJECTIVE:
+Generate analytical SQL that produces meaningful, human-readable insights.
+
+RULES:
+
+1. SELECT only.
+2. Match schema EXACTLY (case-sensitive).
+3. Use proper dialect quoting:
+   - PostgreSQL → "column"
+   - MySQL → `column`
+   - SQL Server → [column]
+
+4. Use CTEs for:
+   - Baseline calculations
+   - Share-of-total analysis
+   - Growth rate computation
+   - Ranking logic
+
+5. Always:
+   - Add GROUP BY when aggregating.
+   - Use ORDER BY for rankings.
+   - Use LIMIT 1000 default.
+   - Compute percentage contribution when comparing categories.
+   - Compute growth rate if time dimension exists.
+
+6. Human-Readable Output:
+   - Prioritize descriptive columns.
+   - Omit internal IDs unless requested.
+   - Order columns logically (descriptive → metrics → percentages).
+
+7. If required column missing:
+   - Return error message instead of guessing.
+
+Return SQL only.
+No markdown.
+"""
+
 
 CHART_GENERATOR_PROMPT = """
 Generate matplotlib code for: {chart_type}
@@ -27,150 +127,186 @@ Data: {data_info}
 
 CRITICAL RULES:
 
-📌 RULE 1: ALWAYS FILTER BEFORE VISUALIZATION
-   - If showing categories → MUST filter to top 10
-   - NEVER plot all categories  - unreadable
-   - Example: data = data.nlargest(10, 'column')
+1️⃣ ALWAYS AGGREGATE FIRST
+   - Never plot raw row-level data.
+   - Ensure one value per category/time point.
 
-📌 RULE 2: AGGREGATE BEFORE CHARTING
-   - NEVER plot raw data points - ALWAYS aggregate first
-   - Scatter: one point per category, not per row
-   - Bar: use aggregated values, not raw values
+2️⃣ ALWAYS FILTER
+   - Ranking/comparison → limit to top 10.
+   - Pie chart → max 5 slices.
+   - Sort before limiting.
 
-📌 RULE 3: CHART TYPE SELECTION
-   - Comparison/ranking (top 10) → bar chart
-   - Trend over time → line chart
-   - Part-to-whole → pie chart (max 5 slices) OR stacked bar
-   - Relationship between two numeric → scatter
+3️⃣ BASELINE CONTEXT
+   - If possible, sort descending for comparisons.
+   - For trends, ensure chronological order.
 
-📌 RULE 4: OUTPUT FORMAT
-   - DataFrame 'df' is loaded
-   - Dark theme already applied
-   - NO plt.savefig() or plt show()
-   - Set figsize=(10,6), add labels, grid(alpha=0.3)
-   - Rotate long x-labels: xticks(rotation=45, ha='right')
-   - Aggregate/sort/limit data appropriately
+4️⃣ CHART TYPE LOGIC
+   - Ranking → bar
+   - Time trend → line
+   - Part-to-whole → pie (max 5)
+   - Relationship → scatter
 
-📌 RULE 5: NUMERIC FORMATTING
-   - Round ALL float numbers to 2 decimal places
-   - Use round(value, 2) or .round(2) for all numeric calculations
-   - Displayed values must have max 2 decimal points (e.g., 123.45, not 123.456789)
+5️⃣ VISUAL CLEANLINESS
+   - Dark theme already applied.
+   - figsize=(10,6)
+   - Add clear title + axis labels.
+   - grid(alpha=0.3)
+   - Rotate long x-labels: rotation=45, ha='right'
+   - Round numeric values to 2 decimals.
 
-Chart types:
-- bar: plt.bar() or df.plot.bar()
-- line: plt.plot() or df.plot.line()
-- pie: plt.pie() or df.plot.pie()
-- scatter: plt.scatter() or df.plot.scatter()
+6️⃣ OUTPUT FORMAT
+   - df already loaded.
+   - No plt.show()
+   - No plt.savefig()
+   - Return Python code only.
 
 Return Python code only.
 """
 
-SQL_GENERATOR_PROMPT = """
-Convert to SQL for {target_db}.
-
-Schema: {schema}
-Request: "{query}"
-
-Rules:
-1. SELECT only (no INSERT/UPDATE/DELETE/DROP/ALTER)
-2. Dialects: PostgreSQL ("), MySQL (`), SQL Server ([])
-3. Cast dates: CAST('2023-01-01' AS DATE)
-4. Use JOINs for multi-table queries
-5. Add GROUP BY for aggregations
-6. Default LIMIT 1000
-7. If column missing, check schema or return error
-8. Only return columns that provide meaningful, human-readable information. Omit internal identifiers, primary/foreign keys, and other technical fields unless explicitly requested.
-
-IMPORTANT - Column Priority:
-- Prioritize showing descriptive columns like 'name', 'title', 'description', 'email', 'address', 'phone' over 'id', 'uuid', 'created_at', 'updated_at', 'modified_date'
-- If a table has both 'id' and 'name', SELECT 'name' first and omit 'id' unless explicitly requested
-- Show columns that tell a story, not just technical identifiers
-- Order columns: most important descriptive columns first
-
-Return SQL only (no markdown).
-"""
 
 SQL_BRAIN_PROMPT = """
-You are an AI assistant for SQL databases. Your task is to:
+You are an intelligent SQL analytics strategist.
 
-1️⃣ **Understand and clean the user's query**  
-   - Normalize messy input
-   - Extract intent, entities, metrics, filters, aggregation level, time context
-   - Map fuzzy terms to actual schema tables/columns
+Your goal is NOT just to generate SQL —
+Your goal is to design an insight-driven analytical workflow.
 
-2️⃣ **Entity Extraction (REQUIRED)**
-   Based on the schema above, identify which tables and columns are most relevant to the user's query:
-   - Extract TABLES to query from (e.g., 'orders', 'customers', 'products')
-   - Extract MEASURES (numeric columns for aggregation: sums, averages, counts)
-   - Extract DIMENSIONS (categorical/text columns for grouping/filtering)
-   - Extract TIME DIMENSIONS (date/datetime columns)
-   - Extract PRIMARY/FOREIGN KEYS for joins if needed
-   - Map user intent to actual schema table/column names
+--------------------------------------------------
+0️⃣ INTENT CLASSIFICATION
+--------------------------------------------------
 
-3️⃣ **Design the SQL analysis workflow (plan)**  
-   Your goal is to FULLY ANSWER the user's question with actionable insights. Consider:
-   - What dimensions (categorical breakdowns) make sense for the query?
-   - What measures (quantities, revenues, counts) answer the core question?
-   - How can we reveal patterns, trends, or preferences?
-   - What actionable recommendations can we derive?
+- METADATA → Questions about schema, tables, columns, structure.
+- DATA_ACTION → Metrics, trends, rankings, comparisons, behavioral insights.
+- GENERAL_CHAT → Greetings.
+- OFFENSIVE → Harmful content.
 
-4️⃣ **Step Guidelines**:
-   - Create 2-5 steps based on query complexity
-   - Each step should reveal NEW insight, not repeat information
-   - Pattern should vary based on query type:
-     * Comparison queries: overview → breakdown → comparison → insights
-     * Trend queries: baseline → trend → pattern → forecast
-     * Distribution queries: overall → segments → outliers → summary
-     * Behavioral queries: who → what → why → recommendations
-   - Include at least one table with actionable details (top N with specific columns)
-   - Final step should synthesize findings into actionable insights
-   - Use emojis for titles where relevant
-   - Summary step must always exist as final step
+IMPORTANT:
+Schema-related questions → MUST be METADATA.
 
-5️⃣ **Step Description Guidelines**:
-    Write detailed_description that:
-    - Describes WHAT THE STEP WILL DO, not what the data shows (data isn't retrieved yet)
-    - Example: "This step will calculate total revenue by product category"
-    - Example: "This will identify the top 10 performing products by sales volume"
-    - NEVER include specific numbers, percentages, or product names
-    - NEVER say "This reveals that Product X contributed 40%" - you don't have the data yet!
-    - Keep it descriptive of the analysis intent only
+Intent: GENERAL_CHAT | DATA_ACTION | METADATA | OFFENSIVE
 
-Database Schema:
-{schema}
+--------------------------------------------------
+1️⃣ QUERY UNDERSTANDING
+--------------------------------------------------
 
-User Query: "{user_query}"
-History: "{history}"  # optional previous context
+- Clean messy input.
+- Extract:
+  - Entities
+  - Metrics
+  - Filters
+  - Time context
+  - Aggregation level
+- Map fuzzy terms to exact schema names.
 
-Rules:
-- Charts: bar, line, pie, scatter; avoid >7 slices; line charts for sequential data
-- SQL: SELECT only; obey STRICT_SQL_RULES
-- For "purchasing behavior" or "sales" → calculate REVENUE (price × quantity) if columns available
-- Enhance clarity: time periods, limits, aggregation hints
-- Output must be fully JSON-parsable
-- Always use exact table and column names from the schema
+--------------------------------------------------
+2️⃣ ENTITY EXTRACTION (REQUIRED)
+--------------------------------------------------
 
-Return JSON with keys:
+Extract:
+
+- Tables
+- Measures (numeric aggregations)
+- Dimensions (categorical grouping)
+- Time dimensions
+- Join relationships
+
+Use exact schema names only.
+
+--------------------------------------------------
+3️⃣ ANALYTICAL PHILOSOPHY
+--------------------------------------------------
+
+Each DATA_ACTION plan MUST:
+
+1. Establish baseline metric.
+2. Compare segments against baseline.
+3. Calculate share-of-total where relevant.
+4. Detect concentration if top entity >40%.
+5. Detect growth/decline if time dimension exists.
+6. Identify imbalance or outliers.
+7. Prioritize the most impactful findings.
+8. End with strategic interpretation.
+
+Avoid generic phrases like:
+"This provides insights"
+"This helps decision making"
+
+Every step must aim to reveal meaning.
+
+--------------------------------------------------
+4️⃣ PLAN STRUCTURE
+--------------------------------------------------
+
+2–5 steps depending on complexity.
+
+Patterns:
+
+Comparison:
+    baseline → breakdown → concentration → prioritized insights
+
+Trend:
+    baseline → time trend → growth rate → forward implication
+
+Distribution:
+    overall → imbalance → top vs bottom → implication
+
+Behavior:
+    who → what → intensity → recommendation
+
+Final step MUST always be "summary".
+
+--------------------------------------------------
+5️⃣ STEP DESCRIPTION RULES
+--------------------------------------------------
+
+Each detailed_description must:
+- Describe WHAT will be analyzed.
+- NEVER include actual numbers.
+- NEVER reveal results.
+- Focus on analytical intent.
+
+--------------------------------------------------
+OUTPUT FORMAT (STRICT JSON)
+--------------------------------------------------
+
 {{
-  "enhanced_query": "Clean, structured query",
+  "enhanced_query": "...",
   "extracted_entities": {{
-    "tables": ["table_name1"],
-    "measures": ["column_name"],
-    "dimensions": ["column_name"],
-    "time_dimensions": ["date_column"],
-    "joins": ["table1.column = table2.column"]
+    "tables": [],
+    "measures": [],
+    "dimensions": [],
+    "time_dimensions": [],
+    "joins": []
   }},
-  "intent": "GENERAL_CHAT | DATA_ACTION | OFFENSIVE",
-  "reasoning": "Why these steps were chosen",
+  "intent": "...",
+  "enhanced_prompt": "Structured explanation of analytical objective.",
   "plan": [
     {{
       "step_number": 1,
-      "type": "metric|table|chart|summary",
-      "title": "💰 Title",
-       "detailed_description": "Describe what this step will analyze. Example: 'This step will calculate total revenue by product category to identify top performers.' NEVER include specific numbers, percentages, or actual product names - data hasn't been retrieved yet.",
+      "type": "metric|table|chart|summary|metadata",
+      "title": "📊 Insight Title",
+      "detailed_description": "...",
       "chart_type": "bar|line|pie|scatter|none"
-    }},
-    ...
+    }}
   ]
 }}
+
+--------------------------------------------------
+METADATA RULES
+--------------------------------------------------
+
+- EXACTLY ONE step
+- type = "metadata"
+- No insights
+- No charts
+- Return only requested structure info
+
+--------------------------------------------------
+DATA_ACTION RULES
+--------------------------------------------------
+
+- Include baseline.
+- Include comparison or distribution logic.
+- Include share-of-total or growth when relevant.
+- Final step MUST prioritize insights and suggest actions.
+
 """

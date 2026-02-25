@@ -71,6 +71,7 @@ class ExcelDataAgent(BaseAgent):
                 response = response.replace("```json", "").replace("```", "").strip()
 
             brain_output = json_repair.loads(response)
+            print("DEBUG: ", brain_output)
 
             if "intent" not in brain_output:
                 raise ValueError("Brain output missing 'intent' field")
@@ -81,7 +82,7 @@ class ExcelDataAgent(BaseAgent):
             print(f"DEBUG: Brain malfunction: {e}")
             return {
                 "intent": "DATA_ACTION",
-                "reasoning": "Fallback due to JSON parsing error.",
+                "enhanced_prompt": f"Fallback due to JSON parsing error. User query: {user_query}",
                 "plan": [
                     {
                         "step_number": 1,
@@ -262,7 +263,9 @@ class ExcelDataAgent(BaseAgent):
                     }
                 return {
                     "type": "table",
-                    "data": result.head(self.chat_settings.max_row_limit).fillna("").to_dict(orient="records"),
+                    "data": result.head(self.chat_settings.max_row_limit)
+                    .fillna("")
+                    .to_dict(orient="records"),
                     "columns": list(result.columns),
                     "total_rows": len(result),
                     "description": result_description,
@@ -350,7 +353,9 @@ class ExcelDataAgent(BaseAgent):
 
                 return {
                     "type": "table",
-                    "data": df_temp.head(self.chat_settings.max_row_limit).fillna("").to_dict(orient="records"),
+                    "data": df_temp.head(self.chat_settings.max_row_limit)
+                    .fillna("")
+                    .to_dict(orient="records"),
                     "columns": list(df_temp.columns),
                     "total_rows": len(df_temp),
                     "description": result_description,
@@ -385,17 +390,20 @@ class ExcelDataAgent(BaseAgent):
 
         brain_output = self._consult_brain(user_query, history_str)
         intent = brain_output.get("intent", "DATA_ACTION")
+        enhanced_prompt = brain_output.get("enhanced_prompt", user_query)
 
         # 2. Handle Non-Data Intents
         if intent == "GENERAL_CHAT":
-            reasoning = brain_output.get("reasoning", "I can help you with that.")
+            enhanced_prompt = brain_output.get(
+                "enhanced_prompt", "I can help you with that."
+            )
             yield json.dumps(
                 {
                     "type": "final_result",
                     "data": {
                         "text": (
-                            reasoning
-                            if len(reasoning) > 10
+                            enhanced_prompt
+                            if len(enhanced_prompt) > 10
                             else "I'm Consigliere, ready to analyze your data."
                         ),
                         "steps": [],
@@ -418,6 +426,7 @@ class ExcelDataAgent(BaseAgent):
             )
             return
 
+        # METADATA and DATA_ACTION both use plan execution
         # 3. Handle DATA_ACTION (Execute the Plan)
         plan_steps = brain_output.get("plan", [])
         print("DEBUG: planning steps: ", plan_steps)
@@ -449,8 +458,18 @@ class ExcelDataAgent(BaseAgent):
                 step_start["detailed_description"] = step["detailed_description"]
             yield json.dumps(step_start)
 
+            # Handle METADATA step type - return targeted schema info
+            if step.get("type") == "metadata":
+                metadata_result = self._execute_metadata_step(enhanced_prompt)
+                metadata_result["step_number"] = step["step_number"]
+                metadata_result["step_description"] = step["title"]
+                metadata_result["step_type"] = "metadata"
+                all_results.append(metadata_result)
+                yield json.dumps({"type": "step_result", "data": metadata_result})
+                continue
+
             # Generate Code
-            raw_code = self._generate_step_code(user_query, step, all_results)
+            raw_code = self._generate_step_code(enhanced_prompt, step, all_results)
 
             try:
                 clean_code = self._sanitize_code(raw_code)
@@ -482,13 +501,15 @@ class ExcelDataAgent(BaseAgent):
 
         # 4. Final Summary - Stream token by token
         accumulated_text = ""
-        for token in self._stream_final_response(user_query, all_results):
+        for token in self._stream_final_response(enhanced_prompt, all_results):
             accumulated_text += token
-            yield json.dumps({
-                "type": "token",
-                "data": token,
-                "is_final": False,
-            })
+            yield json.dumps(
+                {
+                    "type": "token",
+                    "data": token,
+                    "is_final": False,
+                }
+            )
 
         # Construct full code log
         code_log = ""
@@ -511,7 +532,7 @@ class ExcelDataAgent(BaseAgent):
                         "prompt_tokens": token_usage.get("prompt_tokens", 0),
                         "completion_tokens": token_usage.get("completion_tokens", 0),
                         "total_tokens": token_usage.get("total_tokens", 0),
-                    }
+                    },
                 },
             }
         )
@@ -573,7 +594,9 @@ class ExcelDataAgent(BaseAgent):
         ]
 
         try:
-            response_text = self._call_llm_with_usage(messages, temperature=0.4, timeout=60)
+            response_text = self._call_llm_with_usage(
+                messages, temperature=0.4, timeout=60
+            )
 
             if "```" in response_text:
                 response_text = (
@@ -597,4 +620,153 @@ class ExcelDataAgent(BaseAgent):
                 "briefing": f"I analyzed your data ({len(self.df):,} rows).",
                 "key_entities": list(self.df.columns[:5]),
                 "recommended_actions": ["Show me the data", "Count rows"],
+            }
+
+    def _execute_metadata_step(self, user_query: str) -> Dict[str, Any]:
+        """Execute a METADATA step - return targeted schema info based on user question."""
+        user_query_lower = user_query.lower()
+
+        import json
+
+        try:
+            schema_json = json.loads(self.schema)
+        except:
+            schema_json = {"sheets": [{"columns": []}]}
+
+        sheets = schema_json.get("sheets", [])
+
+        all_results = []
+
+        for sheet in sheets:
+            sheet_name = sheet.get("name", "Sheet1")
+            columns = sheet.get("columns", [])
+            row_count = sheet.get("row_count", 0)
+
+            sheet_data = []
+
+            # Determine what to return based on user's question
+            if (
+                "column" in user_query_lower
+                or "structure" in user_query_lower
+                or "schema" in user_query_lower
+            ):
+                for col in columns:
+                    sheet_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Type": col.get("type", "unknown"),
+                            "Role": col.get("role", "unknown"),
+                        }
+                    )
+
+            elif "null" in user_query_lower:
+                for col in columns:
+                    profile = col.get("profile", {})
+                    null_ratio = profile.get("null_ratio", 0)
+                    sheet_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Null Count": (
+                                int(row_count * null_ratio) if null_ratio > 0 else 0
+                            ),
+                            "Null Ratio": f"{null_ratio*100:.1f}%",
+                        }
+                    )
+
+            elif "distinct" in user_query_lower or "unique" in user_query_lower:
+                for col in columns:
+                    profile = col.get("profile", {})
+                    distinct_count = profile.get("distinct_count", 0)
+                    sheet_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Distinct Values": distinct_count,
+                        }
+                    )
+
+            elif (
+                "row" in user_query_lower
+                or "count" in user_query_lower
+                or "size" in user_query_lower
+            ):
+                sheet_data.append(
+                    {"Row Count": row_count, "Column Count": len(columns)}
+                )
+
+            elif (
+                "numeric" in user_query_lower
+                or "number" in user_query_lower
+                or "measure" in user_query_lower
+            ):
+                for col in columns:
+                    col_type = col.get("type", "")
+                    if "int" in col_type or "float" in col_type:
+                        profile = col.get("profile", {})
+                        sheet_data.append(
+                            {
+                                "Column": col.get("name", ""),
+                                "Type": col_type,
+                                "Min": profile.get("min", "N/A"),
+                                "Max": profile.get("max", "N/A"),
+                                "Mean": (
+                                    f"{profile.get('mean', 0):.2f}"
+                                    if profile.get("mean")
+                                    else "N/A"
+                                ),
+                            }
+                        )
+
+            elif (
+                "string" in user_query_lower
+                or "text" in user_query_lower
+                or "category" in user_query_lower
+            ):
+                for col in columns:
+                    col_type = col.get("type", "")
+                    if "str" in col_type or "object" in col_type:
+                        profile = col.get("profile", {})
+                        sheet_data.append(
+                            {
+                                "Column": col.get("name", ""),
+                                "Type": col_type,
+                                "Distinct": profile.get("distinct_count", 0),
+                            }
+                        )
+            else:
+                # Default: return full schema overview
+                for col in columns:
+                    profile = col.get("profile", {})
+                    sheet_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Type": col.get("type", "unknown"),
+                            "Null %": f"{profile.get('null_ratio', 0)*100:.1f}%",
+                            "Distinct": profile.get("distinct_count", "N/A"),
+                        }
+                    )
+
+            if sheet_data:
+                df_sheet = pd.DataFrame(sheet_data)
+                all_results.append(
+                    {
+                        "type": "table",
+                        "table_name": sheet_name,
+                        "data": df_sheet.fillna("").to_dict(orient="records"),
+                        "columns": list(df_sheet.columns),
+                        "total_rows": len(df_sheet),
+                        "description": f"Schema for {sheet_name}",
+                    }
+                )
+
+        if all_results:
+            return {
+                "type": "metadata",
+                "tables": all_results,
+                "description": "Data schema information",
+            }
+        else:
+            return {
+                "type": "text",
+                "data": self.schema,
+                "description": "Data schema information",
             }

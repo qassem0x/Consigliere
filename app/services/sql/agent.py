@@ -286,6 +286,7 @@ class SQLAgent(BaseAgent):
                     f"Brain output missing 'intent', defaulting to DATA_ACTION"
                 )
                 brain_output["intent"] = "DATA_ACTION"
+                brain_output["enhanced_prompt"] = user_query
 
             # Validate plan structure
             if brain_output.get("intent") == "DATA_ACTION" and not brain_output.get(
@@ -307,7 +308,7 @@ class SQLAgent(BaseAgent):
             logger.error(f"Brain malfunction: {e}")
             return {
                 "intent": "DATA_ACTION",
-                "reasoning": "Fallback due to JSON parsing error.",
+                "enhanced_prompt": f"Fallback due to JSON parsing error. User query: {user_query}",
                 "plan": [
                     {
                         "step_number": 1,
@@ -537,7 +538,7 @@ class SQLAgent(BaseAgent):
         """Main method to answer user queries."""
         brain_output = self._consult_brain(user_query, history_str)
         intent = brain_output.get("intent", "DATA_ACTION")
-        enhanced_query = brain_output.get("enhanced_query", user_query)
+        enhanced_prompt = brain_output.get("enhanced_prompt", user_query)
 
         print("DEGUG:", brain_output)
 
@@ -570,6 +571,7 @@ class SQLAgent(BaseAgent):
             )
             return
 
+        # METADATA and DATA_ACTION both use plan execution
         plan = brain_output.get("plan", [])
 
         # Validate plan
@@ -580,7 +582,7 @@ class SQLAgent(BaseAgent):
                     "step_number": 1,
                     "type": "table",
                     "title": "Direct Query",
-                    "description": enhanced_query,
+                    "description": enhanced_prompt,
                     "chart_type": "none",
                 }
             ]
@@ -624,14 +626,19 @@ class SQLAgent(BaseAgent):
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
+            elif step_type == "metadata":
+                exec_result = self._execute_metadata_step(step, enhanced_prompt)
+                all_results.append(exec_result)
+                yield json.dumps({"type": "step_result", "data": exec_result})
+
             elif step_type == "chart":
-                exec_result = self._execute_chart_step(step, all_sqls, enhanced_query)
+                exec_result = self._execute_chart_step(step, all_sqls, enhanced_prompt)
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
             elif step_type == "summary":
                 final_summary_text = self._execute_summary_step(
-                    step, enhanced_query, all_results
+                    step, enhanced_prompt, all_results
                 )
 
             else:
@@ -659,7 +666,7 @@ class SQLAgent(BaseAgent):
 
         # Stream the final response token by token
         accumulated_text = ""
-        for token in self._stream_final_response(enhanced_query, all_results):
+        for token in self._stream_final_response(enhanced_prompt, all_results):
             accumulated_text += token
             yield json.dumps(
                 {
@@ -737,3 +744,80 @@ class SQLAgent(BaseAgent):
     def get_cache_stats(self) -> Dict[str, int]:
         """Get cache statistics."""
         return self.cache_manager.get_cache_stats()
+
+    def _execute_metadata_step(self, step: Dict[str, Any], user_query: str) -> Dict[str, Any]:
+        """Execute a METADATA step - return targeted database schema info based on user question."""
+        user_query_lower = user_query.lower()
+        
+        import json
+        
+        try:
+            schema_json = json.loads(self.schema)
+        except:
+            schema_json = {"tables": []}
+        
+        tables = schema_json.get("tables", [])
+        
+        all_results = []
+        
+        for table in tables:
+            table_name = table.get("name", "")
+            columns = table.get("columns", [])
+            
+            table_data = []
+            
+            if "column" in user_query_lower or "structure" in user_query_lower or "schema" in user_query_lower:
+                for col in columns:
+                    table_data.append({
+                        "Column": col.get("name", ""),
+                        "Type": col.get("type", "unknown"),
+                        "Nullable": col.get("nullable", "YES")
+                    })
+                    
+            elif "primary" in user_query_lower or "key" in user_query_lower:
+                for col in columns:
+                    if col.get("is_primary_key", False):
+                        table_data.append({
+                            "Column": col.get("name", ""),
+                            "Type": col.get("type", "unknown")
+                        })
+                        
+            elif "foreign" in user_query_lower:
+                for col in columns:
+                    if col.get("is_foreign_key", False):
+                        table_data.append({
+                            "Column": col.get("name", ""),
+                            "References": col.get("foreign_key_ref", ""),
+                            "Type": col.get("type", "unknown")
+                        })
+            else:
+                for col in columns:
+                    table_data.append({
+                        "Column": col.get("name", ""),
+                        "Type": col.get("type", "unknown"),
+                        "Nullable": col.get("nullable", "YES")
+                    })
+            
+            if table_data:
+                df_table = pd.DataFrame(table_data)
+                all_results.append({
+                    "type": "table",
+                    "table_name": table_name,
+                    "data": df_table.fillna("").to_dict(orient="records"),
+                    "columns": list(df_table.columns),
+                    "total_rows": len(df_table),
+                    "description": f"Schema for {table_name}"
+                })
+        
+        if all_results:
+            return {
+                "type": "metadata",
+                "tables": all_results,
+                "description": "Database schema information"
+            }
+        else:
+            return {
+                "type": "text",
+                "data": self.schema,
+                "description": "Database schema information"
+            }
