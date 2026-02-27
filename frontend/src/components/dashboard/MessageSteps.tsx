@@ -7,6 +7,7 @@ import { StepResult } from '../../types';
 import { MessageTable } from './ChatView';
 import { ImageModal } from './ImageModal';
 import { cn } from '../../lib/utils';
+import { API_BASE_URL } from '../../utils/api';
 
 export const StreamingStatusIndicator: React.FC<{ status?: string; currentStep?: number }> = memo(({ status, currentStep }) => {
     return (
@@ -132,10 +133,10 @@ export const TimelineStep: React.FC<{ step: StepResult; isLast: boolean; onImage
                     {step.type === 'image' && (
                         <div className="p-1 bg-muted/20">
                             <img
-                                src={`http://localhost:8000${step.data}`}
+                                src={`${API_BASE_URL}${step.data}`}
                                 alt="Analysis Result"
                                 className="w-full rounded border cursor-zoom-in hover:brightness-95 transition-all"
-                                onClick={() => onImageClick?.(`http://localhost:8000${step.data}`)}
+                                onClick={() => onImageClick?.(`${API_BASE_URL}${step.data}`)}
                             />
                         </div>
                     )}
@@ -202,14 +203,14 @@ export const ImageGridStep: React.FC<{ steps: StepResult[]; isLast: boolean; onI
                             <div className="border rounded-md overflow-hidden bg-muted/20 hover:border-primary/50 transition-colors h-full">
                                 <div className="p-1 h-full">
                                     <img
-                                        src={`http://localhost:8000${step.data}`}
+                                        src={`${API_BASE_URL}${step.data}`}
                                         alt={`Step ${step.step_number}`}
                                         className="w-full h-full object-cover rounded border cursor-zoom-in hover:brightness-95 transition-all"
-                                        onClick={() => onImageClick?.(`http://localhost:8000${step.data}`)}
+                                        onClick={() => onImageClick?.(`${API_BASE_URL}${step.data}`)}
                                     />
                                 </div>
                             </div>
-                            <span 
+                            <span
                                 className="text-[10px] text-slate-300 font-mono pl-1 pt-1 leading-snug line-clamp-2 block"
                                 title={`Fig ${step.step_number}: ${step.step_description}`}
                             >

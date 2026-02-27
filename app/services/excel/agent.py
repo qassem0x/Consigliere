@@ -7,11 +7,35 @@ import io
 import contextlib
 import matplotlib.pyplot as plt
 import json_repair
+import numpy as np
 
 from typing import Dict, Any, List, Optional
 
+
+def _make_json_safe(value: Any) -> Any:
+    """Recursively convert value to JSON-serializable type"""
+    if isinstance(value, pd.DataFrame):
+        return _make_json_safe(value.to_dict(orient="records"))
+    elif isinstance(value, pd.Series):
+        return _make_json_safe(value.to_dict())
+    elif isinstance(value, np.integer):
+        return int(value)
+    elif isinstance(value, np.floating):
+        return float(value)
+    elif isinstance(value, np.ndarray):
+        return value.tolist()
+    elif isinstance(value, dict):
+        return {k: _make_json_safe(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [_make_json_safe(item) for item in value]
+    elif pd.isna(value):
+        return None
+    return value
+
+
 from app.services.base_agent import BaseAgent
 from app.services.excel.prompts import (
+    CODE_FIX_PROMPT,
     EXCEL_BRAIN_PROMPT,
     STEP_EXECUTOR_PROMPT,
 )
@@ -38,7 +62,7 @@ class ExcelDataAgent(BaseAgent):
             self.chat_settings = chat_settings
         else:
             self.chat_settings = ChatSettings(zero_leaks_mode=False, max_row_limit=100)
-
+        print("DEBUG: chat_settings: ", self.chat_settings)
         self.cache_manager = DataCache()
         self.df = self.cache_manager.get_data(file_path)
         print(
@@ -73,7 +97,14 @@ class ExcelDataAgent(BaseAgent):
             brain_output = json_repair.loads(response)
             print("DEBUG: ", brain_output)
 
-            if "intent" not in brain_output:
+            if isinstance(brain_output, list):
+                for item in brain_output:
+                    if isinstance(item, dict) and "intent" in item:
+                        brain_output = item
+                        break
+                else:
+                    raise ValueError("Brain output missing 'intent' field")
+            elif "intent" not in brain_output:
                 raise ValueError("Brain output missing 'intent' field")
 
             return brain_output
@@ -113,7 +144,10 @@ class ExcelDataAgent(BaseAgent):
                     f"Step {i}: Created chart - {res.get('description', '')}"
                 )
             elif res["type"] == "text":
-                prev_summary.append(f"Step {i}: {res['data'][:100]}")
+                if self.chat_settings.zero_leaks_mode is True:
+                    prev_summary.append(f"Step {i}: Text result REDACTED (Zero Leaks Mode).")
+                else:
+                    prev_summary.append(f"Step {i}: {res['data'][:100]}")
 
         prev_context = (
             "\n".join(prev_summary) if prev_summary else "This is the first step."
@@ -145,7 +179,38 @@ class ExcelDataAgent(BaseAgent):
             print(
                 f"DEBUG: Step code generation failed for step {step['step_number']}: {e}"
             )
-            return f"result = 'Code generation failed for step {step['step_number']}: {str(e)}'"
+            return f"result = 'Code generation failed for step {step['step_number']}: {str(e)}'\ndescription = 'Code generation failed'"
+
+    def _fix_step_code(
+        self,
+        bad_code: str,
+        error_msg: str,
+        step: Dict[str, Any],
+    ) -> str:
+        """Ask the LLM to self-correct failed step code using the runtime error."""
+        step_desc = step.get("title", step.get("description", ""))
+        if step.get("chart_type") and step["chart_type"] != "none":
+            step_desc += f" (Create a {step['chart_type']} visualization)"
+
+        messages = [
+            {
+                "role": "system",
+                "content": CODE_FIX_PROMPT.format(
+                    error=error_msg,
+                    code=bad_code,
+                    schema=self.schema,
+                    step_type=step.get("type", "table"),
+                    step_description=step_desc,
+                ),
+            }
+        ]
+        try:
+            fixed_code = self._call_llm_with_usage(messages, temperature=0.1, timeout=60)
+            print(f"DEBUG: Step {step['step_number']} fix code received")
+            return fixed_code
+        except Exception as e:
+            print(f"DEBUG: Fix code generation failed for step {step['step_number']}: {e}")
+            return bad_code  # return original; sanitize will catch it again
 
     def _sanitize_code(self, code_string: str) -> str:
         """Extract and validate Python code, checking for security violations"""
@@ -229,7 +294,7 @@ class ExcelDataAgent(BaseAgent):
                 exec(clean_code, local_scope)
 
             result = local_scope.get("result")
-            result_description = local_scope.get("description", "")
+            result_description = str(local_scope.get("description", ""))
             print(f"DEBUG: Query Description: {result_description}")
 
             # Check if a plot was created
@@ -308,7 +373,7 @@ class ExcelDataAgent(BaseAgent):
                             if len(value) > 5:
                                 clean_val = (
                                     ", ".join(map(str, value[:5]))
-                                    + f", ... (+{len(value)-5} more)"
+                                    + f", ... (+{len(value) - 5} more)"
                                 )
                             else:
                                 clean_val = ", ".join(map(str, value))
@@ -394,18 +459,12 @@ class ExcelDataAgent(BaseAgent):
 
         # 2. Handle Non-Data Intents
         if intent == "GENERAL_CHAT":
-            enhanced_prompt = brain_output.get(
-                "enhanced_prompt", "I can help you with that."
-            )
+            chat_response = self._generate_chat_response(user_query, history_str)
             yield json.dumps(
                 {
                     "type": "final_result",
                     "data": {
-                        "text": (
-                            enhanced_prompt
-                            if len(enhanced_prompt) > 10
-                            else "I'm Consigliere, ready to analyze your data."
-                        ),
+                        "text": chat_response,
                         "steps": [],
                         "code": None,
                     },
@@ -471,29 +530,63 @@ class ExcelDataAgent(BaseAgent):
             # Generate Code
             raw_code = self._generate_step_code(enhanced_prompt, step, all_results)
 
-            try:
-                clean_code = self._sanitize_code(raw_code)
-                all_code.append(clean_code)
-            except Exception as e:
-                yield json.dumps(
-                    {
-                        "type": "step_result",
-                        "data": {
-                            "step_number": step["step_number"],
-                            "type": "error",
-                            "data": f"Security Error: {str(e)}",
-                        },
-                    }
-                )
-                continue
+            # Retry loop: generate → sanitize → execute → self-correct on error
+            max_code_retries = 3
+            exec_result = None
+            last_error = None
+            current_raw_code = raw_code
 
-            # Execute Code
-            exec_result = self._execute_code(clean_code)
-            exec_result["step_number"] = step["step_number"]
-            exec_result["step_description"] = step["title"]
-            exec_result["step_type"] = step["type"]
-            if step.get("detailed_description") and step["type"] != "summary":
-                exec_result["detailed_description"] = step["detailed_description"]
+            for code_attempt in range(max_code_retries):
+                try:
+                    clean_code = self._sanitize_code(current_raw_code)
+                    all_code.append(clean_code)
+                except Exception as sec_err:
+                    # Security violation — never retry, halt this step
+                    print(f"DEBUG: Step {step['step_number']} security violation: {sec_err}")
+                    exec_result = {
+                        "step_number": step["step_number"],
+                        "type": "error",
+                        "data": f"Security Error: {str(sec_err)}",
+                    }
+                    break
+
+                candidate = self._execute_code(clean_code)
+                candidate = _make_json_safe(candidate)
+                candidate["step_number"] = step["step_number"]
+                candidate["step_description"] = step.get("title", step.get("description", ""))
+                candidate["step_type"] = step["type"]
+                if step.get("detailed_description") and step["type"] != "summary":
+                    candidate["detailed_description"] = step["detailed_description"]
+
+                if candidate["type"] != "error":
+                    exec_result = candidate
+                    break
+
+                # Execution returned an error — collect error and try to self-correct
+                last_error = candidate["data"]
+                print(
+                    f"DEBUG: Step {step['step_number']} execution error "
+                    f"(attempt {code_attempt + 1}/{max_code_retries}): {last_error}"
+                )
+
+                if code_attempt < max_code_retries - 1:
+                    print(
+                        f"DEBUG: Step {step['step_number']}: requesting code fix from LLM…"
+                    )
+                    current_raw_code = self._fix_step_code(clean_code, last_error, step)
+
+            # If every attempt failed, keep the last error result
+            if exec_result is None:
+                exec_result = {
+                    "step_number": step["step_number"],
+                    "step_description": step.get("title", step.get("description", "")),
+                    "step_type": "error",
+                    "type": "error",
+                    "data": (
+                        f"Step failed after {max_code_retries} attempts. "
+                        f"Last error: {last_error}"
+                    ),
+                }
 
             all_results.append(exec_result)
 
@@ -555,9 +648,12 @@ class ExcelDataAgent(BaseAgent):
             try:
                 unique_count = self.df[col].nunique()
                 if unique_count < 50 and unique_count > 0:
-                    top_3 = self.df[col].value_counts().head(3)
-                    top_list = [f"{val} ({count})" for val, count in top_3.items()]
-                    stats.append(f"Top values in '{col}': {', '.join(top_list)}")
+                    if self.chat_settings.zero_leaks_mode is True:
+                        stats.append(f"Distinct values in '{col}': {unique_count} (values REDACTED - Zero Leaks Mode)")
+                    else:
+                        top_3 = self.df[col].value_counts().head(3)
+                        top_list = [f"{val} ({count})" for val, count in top_3.items()]
+                        stats.append(f"Top values in '{col}': {', '.join(top_list)}")
             except:
                 pass
 
@@ -622,6 +718,31 @@ class ExcelDataAgent(BaseAgent):
                 "recommended_actions": ["Show me the data", "Count rows"],
             }
 
+    def _generate_chat_response(self, user_query: str, history_str: str = "") -> str:
+        """Generate a conversational response for general chat queries."""
+        messages = [
+            {
+                "role": "system",
+                "content": """You are Consigliere, a friendly data analysis assistant. 
+Keep your response brief (1-2 sentences), conversational, and helpful.
+If the user is greeting you, respond warmly.
+If they're asking about your capabilities, explain briefly what you can do.
+Do NOT mention schema, columns, or technical details.""",
+            }
+        ]
+
+        if history_str:
+            messages.append({"role": "user", "content": history_str})
+
+        messages.append({"role": "user", "content": user_query})
+
+        try:
+            response = self._call_llm_with_usage(messages, temperature=0.7, timeout=30)
+            return response.strip()
+        except Exception as e:
+            print(f"DEBUG: Chat response error: {e}")
+            return "Hi! I'm Consigliere, your data analysis assistant. Upload a file and ask me anything about your data!"
+
     def _execute_metadata_step(self, user_query: str) -> Dict[str, Any]:
         """Execute a METADATA step - return targeted schema info based on user question."""
         user_query_lower = user_query.lower()
@@ -669,7 +790,7 @@ class ExcelDataAgent(BaseAgent):
                             "Null Count": (
                                 int(row_count * null_ratio) if null_ratio > 0 else 0
                             ),
-                            "Null Ratio": f"{null_ratio*100:.1f}%",
+                            "Null Ratio": f"{null_ratio * 100:.1f}%",
                         }
                     )
 
@@ -740,7 +861,7 @@ class ExcelDataAgent(BaseAgent):
                         {
                             "Column": col.get("name", ""),
                             "Type": col.get("type", "unknown"),
-                            "Null %": f"{profile.get('null_ratio', 0)*100:.1f}%",
+                            "Null %": f"{profile.get('null_ratio', 0) * 100:.1f}%",
                             "Distinct": profile.get("distinct_count", "N/A"),
                         }
                     )

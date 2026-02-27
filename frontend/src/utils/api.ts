@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 export const api = axios.create({
     baseURL: API_BASE_URL,
@@ -36,7 +36,7 @@ api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
-        
+
         if (error.response?.status === 401 && !originalRequest._retry) {
             if (isRefreshing) {
                 return new Promise((resolve, reject) => {
@@ -49,9 +49,9 @@ api.interceptors.response.use(
 
             originalRequest._retry = true;
             isRefreshing = true;
-            
+
             const refreshToken = localStorage.getItem('refresh_token');
-            
+
             if (!refreshToken) {
                 isRefreshing = false;
                 localStorage.removeItem('token');
@@ -78,14 +78,14 @@ api.interceptors.response.use(
                 return Promise.reject(refreshError);
             }
         }
-        
+
         return Promise.reject(error);
     }
 );
 
 export const fetchStream = async (endpoint: string, body: any) => {
     const token = localStorage.getItem('token');
-    
+
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
     };

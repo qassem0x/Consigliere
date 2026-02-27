@@ -74,6 +74,53 @@ No explanation.
 """
 
 
+CHART_FIX_PROMPT = """
+Fix this matplotlib chart code that raised an error.
+
+Error: {error}
+
+Failed Code:
+{code}
+
+Data Info:
+{data_info}
+
+Instructions:
+1. Identify the root cause of the error.
+2. Fix the code while preserving the original chart intent.
+3. Ensure:
+   - df variable is already in scope (do NOT re-read data).
+   - No plt.show() or plt.savefig() calls.
+   - figsize=(10,6), dark theme already applied.
+   - Title, x-label, y-label are set.
+   - Long x-labels: rotation=45, ha='right'.
+4. If data is empty or incompatible, produce a minimal valid fallback chart.
+
+Return ONLY the corrected Python code.
+No markdown. No explanation.
+"""
+
+
+EMPTY_RESULT_SQL_PROMPT = """
+The following SQL query returned zero rows for {target_db}.
+
+Original Query:
+{query}
+
+User Request: "{user_request}"
+Schema: {schema}
+
+The query may be too specific. Try a broader alternative:
+- Remove overly restrictive WHERE filters.
+- Loosen date ranges.
+- Replace exact string matches with ILIKE/LIKE.
+- Try aggregating at a higher level.
+
+Return ONLY the corrected SQL query.
+No markdown. No explanation.
+"""
+
+
 SQL_GENERATOR_PROMPT = """
 Convert to SQL for {target_db}.
 
@@ -171,6 +218,19 @@ Your goal is NOT just to generate SQL —
 Your goal is to design an insight-driven analytical workflow.
 
 --------------------------------------------------
+📂 DATABASE CONTEXT
+--------------------------------------------------
+
+Database Schema:
+{schema}
+
+Conversation History:
+{history}
+
+User Query:
+{user_query}
+
+--------------------------------------------------
 0️⃣ INTENT CLASSIFICATION
 --------------------------------------------------
 
@@ -241,18 +301,34 @@ Every step must aim to reveal meaning.
 Patterns:
 
 Comparison:
-    baseline → breakdown → concentration → prioritized insights
+    baseline → breakdown (chart) → concentration → prioritized insights
 
 Trend:
-    baseline → time trend → growth rate → forward implication
+    baseline → time trend (chart) → growth rate → forward implication
 
 Distribution:
-    overall → imbalance → top vs bottom → implication
+    overall → imbalance → top vs bottom (chart) → implication
 
 Behavior:
     who → what → intensity → recommendation
 
 Final step MUST always be "summary".
+
+--------------------------------------------------
+6️⃣ CHART AUTOMATION (IMPORTANT)
+--------------------------------------------------
+
+ALWAYS include at least one chart step in your plan UNLESS:
+- Query returns a single aggregate value (e.g., "total revenue", "row count")
+- Query asks for a specific text value (e.g., "customer name")
+- Data has no meaningful visualization
+
+For visualization types:
+- Comparison/ranking → bar chart
+- Distribution of parts → pie chart  
+- Over time trends → line chart
+- Correlation between 2 numeric values → scatter plot
+- Use bar as default when unsure
 
 --------------------------------------------------
 5️⃣ STEP DESCRIPTION RULES
@@ -264,12 +340,26 @@ Each detailed_description must:
 - NEVER reveal results.
 - Focus on analytical intent.
 
+enhanced_query MUST be:
+   - A cleaned natural-language analytical objective.
+
+SPECIAL CASE HANDLING:
+   If query is a pure ranking request (e.g., "top", "highest", "lowest"):
+      - Do NOT create trend steps unless explicitly requested.
+      - Do NOT introduce time analysis.
+      - Focus on aggregation + ranking + optional concentration check + charts.
+
+   If query explicitly references time ("over time", "trend", "growth"):
+      - Use trend workflow.
+
+   If query references comparison across categories:
+      - Use comparison workflow.
 --------------------------------------------------
 OUTPUT FORMAT (STRICT JSON)
 --------------------------------------------------
 
 {{
-  "enhanced_query": "...",
+  "enhanced_prompt": "...",
   "extracted_entities": {{
     "tables": [],
     "measures": [],
@@ -290,6 +380,17 @@ OUTPUT FORMAT (STRICT JSON)
   ]
 }}
 
+Example for "top customers by spending":
+{{
+  "intent": "DATA_ACTION",
+  "enhanced_prompt": "Identify top 5 customers by total spending",
+  "plan": [
+    {{"step_number": 1, "type": "metric", "title": "Total Spending Baseline", "chart_type": "none"}},
+    {{"step_number": 2, "type": "chart", "title": "Top 5 Customers by Spending", "chart_type": "bar"}},
+    {{"step_number": 3, "type": "summary", "title": "Customer Insights", "chart_type": "none"}}
+  ]
+}}
+
 --------------------------------------------------
 METADATA RULES
 --------------------------------------------------
@@ -302,6 +403,15 @@ METADATA RULES
 
 --------------------------------------------------
 DATA_ACTION RULES
+--------------------------------------------------
+
+- Include baseline.
+- Include comparison or distribution logic.
+- Include share-of-total or growth when relevant.
+- Include at least ONE chart step (type: "chart") in most plans
+- Choose chart_type based on: bar (comparison), pie (distribution), line (trend), scatter (correlation)
+- Final step MUST prioritize insights and suggest actions.
+
 --------------------------------------------------
 
 - Include baseline.

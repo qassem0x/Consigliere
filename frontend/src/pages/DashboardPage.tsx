@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ChatType, Dossier, Message } from '../types';
 import { chatService } from '../services/chat';
 import { fileService } from '../services/files';
-import { fetchModel } from '../utils/api';
+import { fetchModel, API_BASE_URL } from '../utils/api';
 
 import { UploadProgressOverlay } from '../components/dashboard/UploadProgressOverlay';
 import { Sidebar } from '../components/dashboard/Sidebar';
@@ -89,7 +89,7 @@ export const DashboardPage: React.FC = () => {
     const handleUpdateSettings = useCallback(async (chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number }) => {
         try {
             await chatService.updateChatSettings(chatId, settings);
-            setUserChats(prev => prev.map(chat => 
+            setUserChats(prev => prev.map(chat =>
                 chat.id === chatId ? { ...chat, settings } : chat
             ));
         } catch (error) {
@@ -223,7 +223,7 @@ export const DashboardPage: React.FC = () => {
         setMessages(prev => [...prev, assistantMsg]);
 
         try {
-            const response = await fetch(`http://localhost:8000/messages/${activeChatId}`, {
+            const response = await fetch(`${API_BASE_URL}/messages/${activeChatId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -399,7 +399,7 @@ export const DashboardPage: React.FC = () => {
             // Show the user we are working on it
             setUploadProgress({ phase: 'analyzing', fileName: dbData.name });
 
-            const response = await fetch('http://localhost:8000/connections', {
+            const response = await fetch(`${API_BASE_URL}/connections`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

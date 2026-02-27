@@ -1,30 +1,33 @@
 import json
-import json_repair
-import pandas as pd
-import re
-import os
-import uuid
-import matplotlib.pyplot as plt
-from sqlalchemy import create_engine, inspect, text
-from typing import List, Dict, Any
 import logging
-from app.models.db_models import ChatSettings
+import os
+import re
+import uuid
+from typing import Any, Dict, List
 
-from app.services.base_agent import BaseAgent
-from app.services.sql.inference_engine import SemanticInferenceEngine
-from app.core.token_tracker import TokenTracker
-from app.services.sql.cache import SQLAgentCache
-from app.services.sql.prompts import (
-    SQL_GENERATOR_PROMPT,
-    SQL_BRAIN_PROMPT,
-    STRICT_SQL_RULES,
-    SQL_FIX_PROMPT,
-    CHART_GENERATOR_PROMPT,
-)
+import json_repair
+import matplotlib.pyplot as plt
+import pandas as pd
+from sqlalchemy import create_engine, inspect, text
+
 from app.core.prompts import (
-    DOSSIER_PROMPT,
     ANALYSIS_FORMAT_PROMPT,
+    DOSSIER_PROMPT,
     SUMMARY_SYNTHESIS_PROMPT,
+)
+from app.core.token_tracker import TokenTracker
+from app.models.db_models import ChatSettings
+from app.services.base_agent import BaseAgent
+from app.services.sql.cache import SQLAgentCache
+from app.services.sql.inference_engine import SemanticInferenceEngine
+from app.services.sql.prompts import (
+    CHART_FIX_PROMPT,
+    CHART_GENERATOR_PROMPT,
+    EMPTY_RESULT_SQL_PROMPT,
+    SQL_BRAIN_PROMPT,
+    SQL_FIX_PROMPT,
+    SQL_GENERATOR_PROMPT,
+    STRICT_SQL_RULES,
 )
 
 # Set up logging
@@ -81,7 +84,7 @@ class SQLAgent(BaseAgent):
         return self._clean_sql(response)
 
     def _fix_sql(self, bad_query: str, error_msg: str) -> str:
-        """Attempt to fix a failed SQL query."""
+        """Attempt to fix a failed SQL query using the runtime error."""
         messages = [
             {
                 "role": "system",
@@ -95,6 +98,44 @@ class SQLAgent(BaseAgent):
         ]
         response = self._call_llm_with_usage(messages, temperature=0.2)
         return self._clean_sql(response)
+
+    def _widen_sql(self, original_query: str, user_request: str) -> str:
+        """Broaden a SQL query that returned zero rows by relaxing filters."""
+        messages = [
+            {
+                "role": "system",
+                "content": EMPTY_RESULT_SQL_PROMPT.format(
+                    target_db=self.target_db,
+                    query=original_query,
+                    user_request=user_request,
+                    schema=self.schema,
+                ),
+            }
+        ]
+        response = self._call_llm_with_usage(messages, temperature=0.3)
+        return self._clean_sql(response)
+
+    def _fix_chart_code(self, bad_code: str, error_msg: str, df: pd.DataFrame) -> str:
+        """Ask the LLM to correct broken chart code using the runtime error."""
+        data_info = {
+            "columns": list(df.columns),
+            "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            "shape": df.shape,
+            "sample": [] if self.chat_settings.zero_leaks_mode else df.head(3).to_dict(orient="records"),
+        }
+        messages = [
+            {
+                "role": "system",
+                "content": CHART_FIX_PROMPT.format(
+                    error=error_msg,
+                    code=bad_code,
+                    data_info=json.dumps(data_info, indent=2, default=str),
+                ),
+            }
+        ]
+        response = self._call_llm_with_usage(messages, temperature=0.1)
+        # Strip any markdown fences the LLM might still add
+        return re.sub(r"```(?:python|py)?\n?(.*?)\n?```", r"\1", response, flags=re.DOTALL).strip()
 
     def _clean_sql(self, response: str) -> str:
         """Clean SQL response from LLM output."""
@@ -262,24 +303,48 @@ class SQLAgent(BaseAgent):
 
     def _consult_brain(self, user_query: str, history_str: str = "") -> Dict[str, Any]:
         """Consult the planning brain to generate analysis plan."""
+        history_content = history_str if history_str else "No previous conversation."
+        brain_content = (
+            SQL_BRAIN_PROMPT
+            .replace("{schema}", self.schema)
+            .replace("{history}", history_content)
+            .replace("{user_query}", user_query)
+        )
         messages = [
             {
                 "role": "system",
-                "content": SQL_BRAIN_PROMPT.format(
-                    schema=self.schema,
-                    history=history_str if history_str else "No previous conversation.",
-                    user_query=user_query,
-                ),
+                "content": brain_content,
             }
         ]
 
         try:
             response = self._call_llm_with_usage(messages, temperature=0.1, timeout=60)
-
+            logger.info(f"RAW BRAIN RESPONSE:\n{response}")
             if "```" in response:
                 response = response.replace("```json", "").replace("```", "").strip()
 
             brain_output = json_repair.loads(response)
+            logger.info(f"PARSED BRAIN OUTPUT type={type(brain_output).__name__}: {brain_output}")
+
+            if isinstance(brain_output, list):
+                # Try to find the dict that has 'intent'; fall back to first dict item
+                found = None
+                for item in brain_output:
+                    if isinstance(item, dict) and "intent" in item:
+                        found = item
+                        break
+                if found is None:
+                    for item in brain_output:
+                        if isinstance(item, dict):
+                            found = item
+                            break
+                brain_output = found if found else {"intent": "DATA_ACTION", "plan": []}
+            elif not isinstance(brain_output, dict):
+                brain_output = {"intent": "DATA_ACTION", "plan": []}
+
+            # Normalize key: prompt uses 'enhanced_query' but code reads 'enhanced_prompt'
+            if "enhanced_query" in brain_output and "enhanced_prompt" not in brain_output:
+                brain_output["enhanced_prompt"] = brain_output["enhanced_query"]
 
             if "intent" not in brain_output:
                 logger.warning(
@@ -289,9 +354,10 @@ class SQLAgent(BaseAgent):
                 brain_output["enhanced_prompt"] = user_query
 
             # Validate plan structure
-            if brain_output.get("intent") == "DATA_ACTION" and not brain_output.get(
+            if brain_output.get("intent") in ("DATA_ACTION", "METADATA") and not brain_output.get(
                 "plan"
             ):
+                logger.warning(f"Brain returned empty plan for intent={brain_output.get('intent')}, using fallback")
                 brain_output["plan"] = [
                     {
                         "step_number": 1,
@@ -302,6 +368,7 @@ class SQLAgent(BaseAgent):
                     }
                 ]
 
+            logger.info(f"FINAL BRAIN PLAN ({len(brain_output.get('plan', []))} steps): {brain_output.get('plan')}")
             return brain_output
 
         except Exception as e:
@@ -323,13 +390,19 @@ class SQLAgent(BaseAgent):
     def _execute_sql_step(
         self, step: Dict[str, Any], all_sqls: List[str]
     ) -> Dict[str, Any]:
-        """Execute a SQL-based step (metric/table)."""
+        """Execute a SQL-based step with error-driven self-correction.
+
+        Retry strategy:
+          Attempts 1..max_retries  → fix syntax/runtime errors via _fix_sql.
+          If all attempts succeed but return 0 rows → one final _widen_sql pass.
+        """
         current_query = step.get("title", step.get("description", ""))
         sql_query = self._generate_sql(current_query)
         df = None
         last_error = None
         current_sql_used = ""
 
+        # ── Phase 1: Fix execution errors ───────────────────────────────────
         for attempt in range(self.max_retries):
             if not self._sanitize_sql(sql_query):
                 return {
@@ -350,43 +423,80 @@ class SQLAgent(BaseAgent):
             except Exception as e:
                 last_error = str(e)
                 logger.warning(
-                    f"SQL Execution failed (Attempt {attempt+1}/{self.max_retries}): {last_error}"
+                    f"Step {step['step_number']}: SQL error on attempt "
+                    f"{attempt + 1}/{self.max_retries}: {last_error}"
                 )
-
                 if attempt < self.max_retries - 1:
+                    logger.info(f"Step {step['step_number']}: Requesting SQL fix from LLM…")
                     sql_query = self._fix_sql(sql_query, last_error)
 
-        # Prepare result
-        if df is not None:
-            df_clean = df.where(pd.notnull(df), None)
-            data_dict = (
-                df_clean.head(self.chat_settings.max_row_limit)
-                .fillna("")
-                .astype(str)
-                .to_dict(orient="records")
+        # ── Phase 2: If 0 rows returned, try widening the query ─────────────
+        if df is not None and df.empty:
+            logger.warning(
+                f"Step {step['step_number']}: Query returned 0 rows. Attempting wider query…"
             )
+            wider_sql = self._widen_sql(current_sql_used, current_query)
+            if self._sanitize_sql(wider_sql):
+                try:
+                    wider_df = self._execute_code(wider_sql)
+                    if wider_df is not None and not wider_df.empty:
+                        df = wider_df
+                        current_sql_used = wider_sql
+                        logger.info(
+                            f"Step {step['step_number']}: Wider query succeeded, "
+                            f"{len(df)} rows returned."
+                        )
+                    else:
+                        logger.info(
+                            f"Step {step['step_number']}: Wider query also returned 0 rows."
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Step {step['step_number']}: Wider query failed: {e}"
+                    )
 
-            exec_result = {
-                "step_number": step["step_number"],
-                "step_description": step["title"],
-                "step_type": step.get("type", "table"),
-                "type": "table",
-                "data": data_dict,
-                "columns": list(df.columns),
-                "total_rows": len(df),
-                "description": f"Retrieved {len(df)} records",
-                "query": current_sql_used,
-            }
+        # ── Build result ─────────────────────────────────────────────────────
+        if df is not None:
+            if df.empty:
+                exec_result = {
+                    "step_number": step["step_number"],
+                    "step_description": step["title"],
+                    "step_type": step.get("type", "table"),
+                    "type": "text",
+                    "data": "Query returned no results. The data may not match the specified filters.",
+                    "query": current_sql_used,
+                }
+            else:
+                df_clean = df.where(pd.notnull(df), None)
+                data_dict = (
+                    df_clean.head(self.chat_settings.max_row_limit)
+                    .fillna("")
+                    .astype(str)
+                    .to_dict(orient="records")
+                )
+                exec_result = {
+                    "step_number": step["step_number"],
+                    "step_description": step["title"],
+                    "step_type": step.get("type", "table"),
+                    "type": "table",
+                    "data": data_dict,
+                    "columns": list(df.columns),
+                    "total_rows": len(df),
+                    "description": f"Retrieved {len(df)} records",
+                    "query": current_sql_used,
+                }
             if step.get("detailed_description") and step.get("type") != "summary":
                 exec_result["detailed_description"] = step["detailed_description"]
         else:
-            # Failed after retries
             exec_result = {
                 "step_number": step["step_number"],
                 "step_description": step["title"],
                 "step_type": "error",
                 "type": "error",
-                "data": f"Failed to execute query after {self.max_retries} attempts. Error: {last_error}",
+                "data": (
+                    f"Failed to execute query after {self.max_retries} attempts. "
+                    f"Last error: {last_error}"
+                ),
             }
             if step.get("detailed_description") and step.get("type") != "summary":
                 exec_result["detailed_description"] = step["detailed_description"]
@@ -401,14 +511,21 @@ class SQLAgent(BaseAgent):
     def _execute_chart_step(
         self, step: Dict[str, Any], all_sqls: List[str], user_query: str
     ) -> Dict[str, Any]:
-        """Execute a chart step - first get data, then visualize it."""
+        """Execute a chart step with full self-correction on both SQL and chart code.
+
+        Retry strategy:
+          SQL phase:   up to max_retries attempts with _fix_sql on error.
+                       If 0 rows → one _widen_sql attempt.
+          Chart phase: up to max_retries attempts; on error feed error back
+                       via _fix_chart_code so the LLM can self-correct.
+        """
         current_query = step.get("title", step.get("description", ""))
         sql_query = self._generate_sql(current_query)
         df = None
         last_error = None
         current_sql_used = ""
 
-        # First, execute SQL to get data
+        # ── Phase 1: SQL execution with error-driven retry ───────────────────
         for attempt in range(self.max_retries):
             if not self._sanitize_sql(sql_query):
                 return {
@@ -423,17 +540,38 @@ class SQLAgent(BaseAgent):
                 df = self._execute_code(sql_query)
                 current_sql_used = sql_query
                 logger.info(
-                    f"Step {step['step_number']}: Data retrieved for chart, {len(df)} rows"
+                    f"Step {step['step_number']}: Data for chart retrieved, {len(df)} rows"
                 )
                 break
             except Exception as e:
                 last_error = str(e)
                 logger.warning(
-                    f"SQL Execution failed (Attempt {attempt+1}/{self.max_retries}): {last_error}"
+                    f"Step {step['step_number']}: Chart SQL error on attempt "
+                    f"{attempt + 1}/{self.max_retries}: {last_error}"
                 )
-
                 if attempt < self.max_retries - 1:
                     sql_query = self._fix_sql(sql_query, last_error)
+
+        # ── Widen if 0 rows ───────────────────────────────────────────────────
+        if df is not None and df.empty:
+            logger.warning(
+                f"Step {step['step_number']}: Chart SQL returned 0 rows. Attempting wider query…"
+            )
+            wider_sql = self._widen_sql(current_sql_used, current_query)
+            if self._sanitize_sql(wider_sql):
+                try:
+                    wider_df = self._execute_code(wider_sql)
+                    if wider_df is not None and not wider_df.empty:
+                        df = wider_df
+                        current_sql_used = wider_sql
+                        logger.info(
+                            f"Step {step['step_number']}: Wider chart SQL succeeded, "
+                            f"{len(df)} rows."
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Step {step['step_number']}: Wider chart SQL failed: {e}"
+                    )
 
         if df is None or df.empty:
             return {
@@ -441,10 +579,10 @@ class SQLAgent(BaseAgent):
                 "step_description": step["title"],
                 "step_type": "error",
                 "type": "error",
-                "data": f"Failed to retrieve data for chart. Error: {last_error}",
+                "data": "Could not retrieve data for chart after all retries.",
             }
 
-        # Generate chart code
+        # ── Phase 2: Chart code generation + self-correcting execution ───────
         chart_code = self._generate_chart_code(step, df, user_query)
         if not chart_code:
             return {
@@ -452,40 +590,82 @@ class SQLAgent(BaseAgent):
                 "step_description": step["title"],
                 "step_type": "error",
                 "type": "error",
-                "data": "Failed to generate chart code.",
+                "data": "Failed to generate chart code (LLM call failed).",
             }
 
-        # Sanitize and execute chart code
-        try:
-            clean_code = self._sanitize_chart_code(chart_code)
-            chart_result = self._execute_chart_code(clean_code, df)
+        chart_result = None
+        chart_last_error = None
+        current_chart_code = chart_code
 
-            chart_result["step_number"] = step["step_number"]
-            chart_result["step_description"] = step["title"]
-            chart_result["step_type"] = "chart"
-            chart_result["query"] = current_sql_used
-            if step.get("detailed_description") and step.get("type") != "summary":
-                chart_result["detailed_description"] = step["detailed_description"]
-
-            if current_sql_used:
-                all_sqls.append(
-                    f"-- Step {step['step_number']}: {step.get('description', step.get('title', ''))}\n{current_sql_used}\n\n# Chart Code:\n{clean_code}"
+        for chart_attempt in range(self.max_retries):
+            try:
+                clean_code = self._sanitize_chart_code(current_chart_code)
+            except Exception as sec_err:
+                # Security violation in chart code — do not retry
+                logger.error(
+                    f"Step {step['step_number']}: Chart code security violation: {sec_err}"
                 )
+                return {
+                    "step_number": step["step_number"],
+                    "step_description": step["title"],
+                    "step_type": "error",
+                    "type": "error",
+                    "data": f"Security error in chart code: {sec_err}",
+                }
 
-            return chart_result
+            result = self._execute_chart_code(clean_code, df)
 
-        except Exception as e:
-            logger.error(f"Chart generation error: {e}")
+            if result["type"] != "error":
+                chart_result = result
+                # Annotate and append SQL log entry on first success
+                if current_sql_used:
+                    all_sqls.append(
+                        f"-- Step {step['step_number']}: "
+                        f"{step.get('description', step.get('title', ''))}\n"
+                        f"{current_sql_used}\n\n# Chart Code:\n{clean_code}"
+                    )
+                break
+            else:
+                chart_last_error = result["data"]
+                logger.warning(
+                    f"Step {step['step_number']}: Chart execution error on attempt "
+                    f"{chart_attempt + 1}/{self.max_retries}: {chart_last_error}"
+                )
+                if chart_attempt < self.max_retries - 1:
+                    logger.info(
+                        f"Step {step['step_number']}: Requesting chart code fix from LLM…"
+                    )
+                    current_chart_code = self._fix_chart_code(
+                        clean_code, chart_last_error, df
+                    )
+
+        if chart_result is None:
+            logger.error(
+                f"Step {step['step_number']}: Chart failed after "
+                f"{self.max_retries} attempts. Last error: {chart_last_error}"
+            )
             result = {
                 "step_number": step["step_number"],
                 "step_description": step["title"],
                 "step_type": "error",
                 "type": "error",
-                "data": f"Chart generation failed: {str(e)}",
+                "data": (
+                    f"Chart generation failed after {self.max_retries} attempts. "
+                    f"Last error: {chart_last_error}"
+                ),
             }
             if step.get("detailed_description") and step.get("type") != "summary":
                 result["detailed_description"] = step["detailed_description"]
             return result
+
+        chart_result["step_number"] = step["step_number"]
+        chart_result["step_description"] = step["title"]
+        chart_result["step_type"] = "chart"
+        chart_result["query"] = current_sql_used
+        if step.get("detailed_description") and step.get("type") != "summary":
+            chart_result["detailed_description"] = step["detailed_description"]
+
+        return chart_result
 
     def _execute_summary_step(
         self, step: Dict[str, Any], user_query: str, all_results: List[Dict[str, Any]]
@@ -497,11 +677,13 @@ class SQLAgent(BaseAgent):
                 context_str += (
                     f"Step {res['step_number']} ({res['step_description']}):\n"
                 )
-                context_str += f"Query: {res.get('query','N/A')}\n"
-                context_str += f"Total Rows: {res.get('total_rows', 0)}\n"
                 if self.chat_settings.zero_leaks_mode is True:
-                    context_str += "REDACTED_FOR_PRIVACY (Zero Leaks Mode Active). Use columns and dtypes only."
+                    context_str += f"Query: REDACTED (Zero Leaks Mode)\n"
+                    context_str += f"Total Rows: {res.get('total_rows', 0)}\n"
+                    context_str += "Data: REDACTED_FOR_PRIVACY (Zero Leaks Mode Active).\n\n"
                 else:
+                    context_str += f"Query: {res.get('query','N/A')}\n"
+                    context_str += f"Total Rows: {res.get('total_rows', 0)}\n"
                     context_str += (
                         f"Data Sample (Top 5 rows): {str(res.get('data', [])[:5])}\n\n"
                     )
@@ -510,6 +692,14 @@ class SQLAgent(BaseAgent):
                     f"Step {res['step_number']} ({res['step_description']}):\n"
                 )
                 context_str += f"Chart Created: {res.get('description', '')}\n\n"
+            elif res["type"] == "text":
+                context_str += (
+                    f"Step {res['step_number']} ({res['step_description']}):\n"
+                )
+                if self.chat_settings.zero_leaks_mode is True:
+                    context_str += "Result: REDACTED_FOR_PRIVACY (Zero Leaks Mode Active).\n\n"
+                else:
+                    context_str += f"Result: {res.get('data', '')}\n\n"
             elif res["type"] == "error":
                 context_str += f"Step {res['step_number']} Error: {res.get('data')}\n\n"
 
@@ -524,15 +714,23 @@ class SQLAgent(BaseAgent):
                 ),
             }
         ]
-        try:
-            summary_text = self._call_llm_with_usage(
-                messages, temperature=0.5, timeout=30
-            )
-            logger.info(f"Step {step['step_number']}: Summary generated successfully")
-            return summary_text
-        except Exception as e:
-            logger.error(f"Summary generation failed: {e}")
-            return "Summary generation failed. See individual step results for details."
+        for attempt in range(self.max_retries):
+            try:
+                summary_text = self._call_llm_with_usage(
+                    messages, temperature=0.5, timeout=30
+                )
+                logger.info(f"Step {step['step_number']}: Summary generated successfully")
+                return summary_text
+            except Exception as e:
+                logger.warning(
+                    f"Step {step['step_number']}: Summary attempt "
+                    f"{attempt + 1}/{self.max_retries} failed: {e}"
+                )
+
+        logger.error(
+            f"Step {step['step_number']}: Summary failed after {self.max_retries} attempts"
+        )
+        return "Summary generation failed. See individual step results above for details."
 
     def answer(self, user_query: str, history_str: str = ""):
         """Main method to answer user queries."""
@@ -573,6 +771,7 @@ class SQLAgent(BaseAgent):
 
         # METADATA and DATA_ACTION both use plan execution
         plan = brain_output.get("plan", [])
+        print("DEBUG: ", plan)
 
         # Validate plan
         if not plan:
@@ -604,6 +803,8 @@ class SQLAgent(BaseAgent):
 
         # Execute each step in the plan
         for step in plan:
+            if isinstance(step, str):
+                step = json_repair.loads(step)
             step_type = step.get("type", "table")
             step_number = step.get("step_number", 0)
 
@@ -689,7 +890,7 @@ class SQLAgent(BaseAgent):
                         "prompt_tokens": token_usage.get("prompt_tokens", 0),
                         "completion_tokens": token_usage.get("completion_tokens", 0),
                         "total_tokens": token_usage.get("total_tokens", 0),
-                    }
+                    },
                 },
             }
         )
@@ -745,79 +946,95 @@ class SQLAgent(BaseAgent):
         """Get cache statistics."""
         return self.cache_manager.get_cache_stats()
 
-    def _execute_metadata_step(self, step: Dict[str, Any], user_query: str) -> Dict[str, Any]:
+    def _execute_metadata_step(
+        self, step: Dict[str, Any], user_query: str
+    ) -> Dict[str, Any]:
         """Execute a METADATA step - return targeted database schema info based on user question."""
         user_query_lower = user_query.lower()
-        
+
         import json
-        
+
         try:
             schema_json = json.loads(self.schema)
         except:
             schema_json = {"tables": []}
-        
+
         tables = schema_json.get("tables", [])
-        
+
         all_results = []
-        
+
         for table in tables:
             table_name = table.get("name", "")
             columns = table.get("columns", [])
-            
+
             table_data = []
-            
-            if "column" in user_query_lower or "structure" in user_query_lower or "schema" in user_query_lower:
+
+            if (
+                "column" in user_query_lower
+                or "structure" in user_query_lower
+                or "schema" in user_query_lower
+            ):
                 for col in columns:
-                    table_data.append({
-                        "Column": col.get("name", ""),
-                        "Type": col.get("type", "unknown"),
-                        "Nullable": col.get("nullable", "YES")
-                    })
-                    
+                    table_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Type": col.get("type", "unknown"),
+                            "Nullable": col.get("nullable", "YES"),
+                        }
+                    )
+
             elif "primary" in user_query_lower or "key" in user_query_lower:
                 for col in columns:
                     if col.get("is_primary_key", False):
-                        table_data.append({
-                            "Column": col.get("name", ""),
-                            "Type": col.get("type", "unknown")
-                        })
-                        
+                        table_data.append(
+                            {
+                                "Column": col.get("name", ""),
+                                "Type": col.get("type", "unknown"),
+                            }
+                        )
+
             elif "foreign" in user_query_lower:
                 for col in columns:
                     if col.get("is_foreign_key", False):
-                        table_data.append({
-                            "Column": col.get("name", ""),
-                            "References": col.get("foreign_key_ref", ""),
-                            "Type": col.get("type", "unknown")
-                        })
+                        table_data.append(
+                            {
+                                "Column": col.get("name", ""),
+                                "References": col.get("foreign_key_ref", ""),
+                                "Type": col.get("type", "unknown"),
+                            }
+                        )
             else:
                 for col in columns:
-                    table_data.append({
-                        "Column": col.get("name", ""),
-                        "Type": col.get("type", "unknown"),
-                        "Nullable": col.get("nullable", "YES")
-                    })
-            
+                    table_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Type": col.get("type", "unknown"),
+                            "Nullable": col.get("nullable", "YES"),
+                        }
+                    )
+
             if table_data:
                 df_table = pd.DataFrame(table_data)
-                all_results.append({
-                    "type": "table",
-                    "table_name": table_name,
-                    "data": df_table.fillna("").to_dict(orient="records"),
-                    "columns": list(df_table.columns),
-                    "total_rows": len(df_table),
-                    "description": f"Schema for {table_name}"
-                })
-        
+                all_results.append(
+                    {
+                        "type": "table",
+                        "table_name": table_name,
+                        "data": df_table.fillna("").to_dict(orient="records"),
+                        "columns": list(df_table.columns),
+                        "total_rows": len(df_table),
+                        "description": f"Schema for {table_name}",
+                    }
+                )
+
         if all_results:
             return {
                 "type": "metadata",
                 "tables": all_results,
-                "description": "Database schema information"
+                "description": "Database schema information",
             }
         else:
             return {
                 "type": "text",
                 "data": self.schema,
-                "description": "Database schema information"
+                "description": "Database schema information",
             }

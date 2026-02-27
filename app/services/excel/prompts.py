@@ -25,6 +25,11 @@ IMPORTANT:
 If the user asks about schema or structure → MUST classify as METADATA.
 Only use DATA_ACTION for real analytical questions.
 
+For GENERAL_CHAT intent:
+- Generate a brief, friendly response (1-2 sentences max)
+- Do NOT include schema details or technical information
+- Example: "Hi! I'm Consigliere, your data analysis assistant. Upload a file and ask me anything about your data!"
+
 Intent: GENERAL_CHAT | DATA_ACTION | METADATA | OFFENSIVE
 
 --------------------------------------------------
@@ -120,6 +125,8 @@ Example:
 OUTPUT FORMAT (STRICT JSON)
 --------------------------------------------------
 
+CRITICAL: Every step in the plan MUST have a "title" field. This is required for the UI to display step information.
+
 {{
   "intent": "...",
   "enhanced_prompt": "Clear explanation of the cleaned query, mapped entities, filters, time context, and analytical interpretation intent.",
@@ -132,7 +139,7 @@ OUTPUT FORMAT (STRICT JSON)
     {{
       "step_number": 1,
       "type": "metric|chart|table|summary|metadata",
-      "title": "📊 Descriptive Insight Title",
+      "title": "📊 Descriptive Insight Title",  <-- REQUIRED, MUST BE PRESENT
       "detailed_description": "Describe analytical intent only.",
       "chart_type": "bar|line|scatter|pie|none"
     }}
@@ -310,4 +317,37 @@ NO explanations.
 NO comments outside Python.
 
 Generate code now.
+"""
+
+
+CODE_FIX_PROMPT = """
+Fix this Python data-analysis code that raised an error.
+
+Error:
+{error}
+
+Failed Code:
+{code}
+
+Schema:
+{schema}
+
+Step Type: {step_type}
+Step Task: {step_description}
+
+Instructions:
+1. Analyse the root cause of the error.
+2. Fix the code while preserving the original analytical intent.
+3. Ensure:
+   - Use ONLY the preloaded `df` variable (do NOT reload data).
+   - Allowed libraries: pandas, matplotlib.pyplot as plt.
+   - Round ALL numeric outputs to 2 decimal places.
+   - Column names MUST match schema EXACTLY (case-sensitive).
+   - result variable MUST be assigned.
+   - description variable MUST be assigned as a string.
+   - chart steps: no plt.show(), no plt.savefig().
+4. If a column is missing, compute the next best equivalent metric from the available schema.
+
+Return ONLY the corrected Python code.
+No markdown. No explanation.
 """

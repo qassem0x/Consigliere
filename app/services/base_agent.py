@@ -51,7 +51,10 @@ class BaseAgent(ABC):
                     f"Step {i}: Created visualization - {result.get('description', '')}"
                 )
             elif result["type"] == "text":
-                summary_parts.append(f"Step {i}: {result['data'][:100]}")
+                if self.chat_settings.zero_leaks_mode is True:
+                    summary_parts.append(f"Step {i}: Text result REDACTED (Zero Leaks Mode).")
+                else:
+                    summary_parts.append(f"Step {i}: {result['data'][:100]}")
             elif result["type"] == "error":
                 summary_parts.append(f"Step {i}: Error - {result.get('data', '')}")
 
@@ -100,7 +103,10 @@ class BaseAgent(ABC):
                     f"Step {i}: Created visualization - {result.get('description', '')}"
                 )
             elif result["type"] == "text":
-                summary_parts.append(f"Step {i}: {result['data'][:100]}")
+                if self.chat_settings.zero_leaks_mode is True:
+                    summary_parts.append(f"Step {i}: Text result REDACTED (Zero Leaks Mode).")
+                else:
+                    summary_parts.append(f"Step {i}: {result['data'][:100]}")
             elif result["type"] == "error":
                 summary_parts.append(f"Step {i}: Error - {result.get('data', '')}")
 
