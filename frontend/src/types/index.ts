@@ -41,6 +41,7 @@ export interface ChatType {
 export interface Dossier {
     briefing: string;
     key_entities: string[];
+    data_alerts?: string[];
     recommended_actions: string[];
 }
 

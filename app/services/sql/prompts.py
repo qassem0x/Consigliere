@@ -408,15 +408,8 @@ DATA_ACTION RULES
 - Include baseline.
 - Include comparison or distribution logic.
 - Include share-of-total or growth when relevant.
-- Include at least ONE chart step (type: "chart") in most plans
-- Choose chart_type based on: bar (comparison), pie (distribution), line (trend), scatter (correlation)
-- Final step MUST prioritize insights and suggest actions.
-
---------------------------------------------------
-
-- Include baseline.
-- Include comparison or distribution logic.
-- Include share-of-total or growth when relevant.
-- Final step MUST prioritize insights and suggest actions.
+- Include at least ONE chart step (type: "chart") in most plans.
+- Choose chart_type based on: bar (comparison), pie (distribution), line (trend), scatter (correlation).
+- Final step MUST be type: "summary" — prioritize findings, interpret what they mean, and suggest clear next actions.
 
 """

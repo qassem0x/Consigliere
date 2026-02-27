@@ -1,5 +1,5 @@
 import React from 'react';
-import { Cpu, ArrowRight, Target, ShieldAlert, FileText } from 'lucide-react';
+import { ArrowRight, Target, ShieldAlert, FileText, AlertTriangle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Dossier } from '../types';
 
@@ -54,9 +54,6 @@ export const DossierView: React.FC<DossierViewProps> = ({ dossier, title, onActi
                 li: ({ node, ...props }) => <li className="leading-7" {...props} />,
                 blockquote: ({ node, ...props }) => <blockquote className="mt-6 border-l-2 pl-6 italic text-muted-foreground" {...props} />,
                 code: ({ node, className, ...props }) => {
-                  // A simpler check for inline vs block code could be used if needed, 
-                  // but typically ReactMarkdown handles this via the presence of `children` usually being a string.
-                  // For simplicity in this shadcn port, we apply a generic style.
                   return <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold" {...props} />
                 },
                 pre: ({ node, ...props }) => <pre className="mb-4 mt-6 overflow-x-auto rounded-lg border bg-muted p-4" {...props} />,
@@ -83,6 +80,26 @@ export const DossierView: React.FC<DossierViewProps> = ({ dossier, title, onActi
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Data Alerts */}
+          {dossier.data_alerts && dossier.data_alerts.length > 0 && (
+            <div className="mt-6 pt-6 border-t flex flex-col gap-3">
+              <span className="text-xs font-medium text-amber-500 flex items-center gap-2 uppercase tracking-wider">
+                <AlertTriangle size={14} className="text-amber-500" /> Data Alerts
+              </span>
+              <ul className="flex flex-col gap-2">
+                {dossier.data_alerts.map((alert, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-400"
+                  >
+                    <AlertTriangle size={12} className="mt-0.5 shrink-0 text-amber-500" />
+                    <span>{alert}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>

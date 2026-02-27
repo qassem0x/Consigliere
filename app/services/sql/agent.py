@@ -896,19 +896,67 @@ class SQLAgent(BaseAgent):
         )
 
     def _generate_stats(self) -> str:
-        """Generate database statistics."""
+        """Generate enriched database statistics: per-table row counts and column overview."""
         try:
             inspector = inspect(self.engine)
             tables = inspector.get_table_names()
-            stats = f"Database contains {len(tables)} tables"
-            return stats
+            lines = [f"Total tables: {len(tables)}"]
+            with self.engine.connect() as conn:
+                for table in tables[:10]:  # cap at 10 tables to avoid timeout
+                    try:
+                        result = conn.execute(text(f'SELECT COUNT(*) FROM "{table}"'))
+                        row_count = result.scalar()
+                    except Exception:
+                        row_count = "unknown"
+                    cols = inspector.get_columns(table)
+                    col_names = [c["name"] for c in cols[:8]]  # first 8 columns
+                    col_types = [str(c["type"]) for c in cols[:8]]
+                    col_summary = ", ".join(
+                        f"{n} ({t})" for n, t in zip(col_names, col_types)
+                    )
+                    lines.append(
+                        f"Table '{table}': {row_count} rows | Columns: {col_summary}"
+                    )
+                    # FK relationships
+                    fks = inspector.get_foreign_keys(table)
+                    for fk in fks:
+                        ref_table = fk.get("referred_table", "?")
+                        local_cols = ", ".join(fk.get("constrained_columns", []))
+                        lines.append(
+                            f"  → '{table}'.{local_cols} references '{ref_table}'"
+                        )
+            return "\n".join(lines)
         except Exception as e:
             logger.error(f"Stats generation error: {e}")
             return "No stats available"
 
     def _generate_preview(self) -> str:
-        """Generate database preview."""
-        return "No Preview Available"
+        """Generate sample rows from up to 3 tables."""
+        try:
+            inspector = inspect(self.engine)
+            tables = inspector.get_table_names()[:3]
+            preview_parts = []
+            with self.engine.connect() as conn:
+                for table in tables:
+                    try:
+                        result = conn.execute(text(f'SELECT * FROM "{table}" LIMIT 3'))
+                        rows = result.fetchall()
+                        col_names = list(result.keys())
+                        if rows:
+                            rows_str = "\n".join(
+                                str(dict(zip(col_names, row))) for row in rows
+                            )
+                            preview_parts.append(
+                                f"Table '{table}' sample rows:\n{rows_str}"
+                            )
+                        else:
+                            preview_parts.append(f"Table '{table}': empty")
+                    except Exception as e:
+                        preview_parts.append(f"Table '{table}': preview unavailable ({e})")
+            return "\n\n".join(preview_parts) if preview_parts else "No preview available"
+        except Exception as e:
+            logger.error(f"Preview generation error: {e}")
+            return "No preview available"
 
     def generate_dossier(self):
         """Generate database dossier (intelligence report)."""
@@ -916,7 +964,7 @@ class SQLAgent(BaseAgent):
         try:
             messages = [
                 {
-                    "role": "system",
+                    "role": "user",
                     "content": DOSSIER_PROMPT.format(
                         schema=self.schema,
                         stats=self._generate_stats(),
@@ -925,9 +973,16 @@ class SQLAgent(BaseAgent):
                     ),
                 }
             ]
-            response = self._call_llm_with_usage(messages, temperature=0.0)
+            response = self._call_llm_with_usage(messages, temperature=0.4, timeout=60)
             clean_response = response.replace("```json", "").replace("```", "").strip()
-            return json_repair.loads(clean_response)
+            parsed = json_repair.loads(clean_response)
+            if isinstance(parsed, dict):
+                required_fields = ["briefing", "key_entities", "data_alerts", "recommended_actions"]
+                for field in required_fields:
+                    if field not in parsed:
+                        parsed[field] = [] if field != "briefing" else "No briefing generated."
+                return parsed
+            raise ValueError("Dossier output was not a dictionary")
         except Exception as e:
             logger.error(f"Dossier generation error: {str(e)}")
             raise Exception(f"Dossier generation failed: {str(e)}")

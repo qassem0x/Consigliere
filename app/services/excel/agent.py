@@ -636,6 +636,24 @@ class ExcelDataAgent(BaseAgent):
         stats.append(f"Total Records: {len(self.df):,}")
         stats.append(f"Total Columns: {len(self.df.columns)}")
 
+        # Duplicate rows
+        try:
+            dup_count = self.df.duplicated().sum()
+            if dup_count > 0:
+                stats.append(f"Duplicate Rows: {dup_count:,} ({dup_count / len(self.df) * 100:.1f}%)")
+        except:
+            pass
+
+        # Columns with nulls — report top 5 offenders
+        try:
+            null_counts = self.df.isnull().sum()
+            null_cols = null_counts[null_counts > 0].sort_values(ascending=False).head(5)
+            for col, count in null_cols.items():
+                ratio = count / len(self.df) * 100
+                stats.append(f"Nulls in '{col}': {count:,} ({ratio:.1f}%)")
+        except:
+            pass
+
         for col in self.df.select_dtypes(include=["datetime", "datetimetz"]).columns:
             try:
                 start = self.df[col].min()
@@ -702,7 +720,7 @@ class ExcelDataAgent(BaseAgent):
             parsed_json = json_repair.loads(response_text)
 
             if isinstance(parsed_json, dict):
-                required_fields = ["briefing", "key_entities", "recommended_actions"]
+                required_fields = ["briefing", "key_entities", "data_alerts", "recommended_actions"]
                 for field in required_fields:
                     if field not in parsed_json:
                         parsed_json[field] = [] if field != "briefing" else "Unknown"
@@ -715,6 +733,7 @@ class ExcelDataAgent(BaseAgent):
             return {
                 "briefing": f"I analyzed your data ({len(self.df):,} rows).",
                 "key_entities": list(self.df.columns[:5]),
+                "data_alerts": [],
                 "recommended_actions": ["Show me the data", "Count rows"],
             }
 

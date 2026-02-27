@@ -11,6 +11,7 @@ RULES:
 2. Never invent product names, categories, percentages, or trends
 3. Never use placeholders like "Product 1", "Category A"
 4. If data doesn't support a conclusion, don't state it
+5. Wrap all numbers, metric values, and proper names/identifiers in backtick code spans — e.g. `42`, `$1,200`, `Product A`, `Q3 2024`
 
 Write naturally - like you're explaining to a colleague. No rigid sections or bullet lists. Just tell them what you found in a flowing narrative.
 
@@ -36,6 +37,7 @@ RULES:
 2. Never invent product names, categories, percentages, or trends
 3. Never use placeholders like "Product 1", "Category A"
 4. If data doesn't support something, don't state it
+5. Wrap all numbers, metric values, and proper names/identifiers in backtick code spans — e.g. `42`, `$1,200`, `Product A`, `Q3 2024`
 
 Write naturally - like you're explaining to a colleague what you found. No rigid sections or bullet lists. Just tell them what you discovered in a flowing narrative. 
 
@@ -51,17 +53,26 @@ If zero_leaks_mode is true:
 """
 
 DOSSIER_PROMPT = """
-Generate executive intelligence report for new database.
+You are a senior data analyst handing off a newly received dataset to a colleague.
+Write a genuine intelligence briefing — based ONLY on the schema, stats, and preview provided.
+Do NOT use placeholder text like "[X] tables" or "[Industry]". Speak from the actual data.
 
+Source Type: {source_type}
 Schema: {schema}
 Stats: {stats}
 Preview: {preview}
-Type: {source_type}
 
-Return JSON:
+Return STRICTLY valid JSON with these fields:
+
 {{
-  "briefing": "## 1. Executive Summary\\n* **Scope:** [X] tables, [Y] records\\n* **Domain:** [Industry]\\n* **Value:** [Why valuable]\\n\\n## 2. Intelligence\\n* **Model:** Tracks [Process]\\n* **Entities:** [Table1, Table2, Table3]\\n* **Relationships:** [FK descriptions]\\n\\n## 3. Assessment\\n* **Strengths:** [Data quality, structure]\\n* **Limitations:** [Missing data, concerns]\\n* **Opportunities:** [Analysis types]",
-  "key_entities": ["Table1", "Table2", "..."],
-  "recommended_actions": ["Q1", "Q2", "Q3"]
+  "briefing": "2–4 paragraph markdown narrative. Describe: (1) what this data tracks and its domain, (2) key patterns or relationships visible from the stats/preview, (3) data quality observations. Use `backticks` for column names, table names, and values. Be specific — reference actual column names and numbers.",
+  "key_entities": ["The most important table/sheet/column names the user should know about — max 6"],
+  "data_alerts": ["Any quality issues, anomalies, or warnings: high nulls, suspicious columns, very low row counts, duplicate-looking data, etc. Empty list if no issues found."],
+  "recommended_actions": ["3–5 specific, opinionated analytical questions the user could ask RIGHT NOW, based on what you see in the schema and stats. Make them concrete and data-specific."]
 }}
+
+Example of a good recommended_action: "Which product category has the highest return rate?"
+Example of a bad recommended_action: "Analyze the data"
+
+Return JSON only. No markdown wrapper. No explanation outside the JSON.
 """
