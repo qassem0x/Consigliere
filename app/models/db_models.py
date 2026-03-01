@@ -202,6 +202,12 @@ class Message(Base):
 
     role = Column(String(50), nullable=False)
     content = Column(Text, nullable=False)
+    parent_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     artifacts = Column(JSONB)
     related_code = Column(JSONB)
     steps = Column(JSONB)
@@ -212,6 +218,7 @@ class Message(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     chat = relationship("Chat", back_populates="messages")
+    parent = relationship("Message", remote_side=[id], backref="children")
 
 
 class ChatSettings(Base):

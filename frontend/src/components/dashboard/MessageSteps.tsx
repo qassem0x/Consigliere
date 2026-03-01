@@ -1,7 +1,7 @@
 import React, { useState, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
-    Check, Copy, BarChart3, Table2, AlertCircle, TrendingUp, Activity, Terminal, Loader2, Zap
+    Check, Copy, BarChart3, Table2, AlertCircle, TrendingUp, Activity, Terminal, Loader2, Zap, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { StepResult } from '../../types';
 import { MessageTable } from './ChatView';
@@ -85,6 +85,8 @@ export const TacticalCodeBlock: React.FC<{ code: string; type: string }> = memo(
 });
 
 export const TimelineStep: React.FC<{ step: StepResult; isLast: boolean; onImageClick?: (url: string) => void }> = memo(({ step, isLast, onImageClick }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    
     const getIcon = () => {
         switch (step.step_type) {
             case 'chart': return <BarChart3 size={12} />;
@@ -124,7 +126,17 @@ export const TimelineStep: React.FC<{ step: StepResult; isLast: boolean; onImage
                 </div>
 
                 {step.detailed_description && step.step_type !== 'summary' && (
-                    <div className="text-xs text-muted-foreground font-mono leading-relaxed">
+                    <button
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+                    >
+                        {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        <span className="font-mono">{isExpanded ? 'Hide' : 'Show'} execution details</span>
+                    </button>
+                )}
+
+                {isExpanded && step.detailed_description && step.step_type !== 'summary' && (
+                    <div className="text-xs text-muted-foreground font-mono leading-relaxed p-2 bg-muted/20 rounded border border-white/5 mt-1">
                         {step.detailed_description}
                     </div>
                 )}
@@ -177,6 +189,17 @@ export const TimelineStep: React.FC<{ step: StepResult; isLast: boolean; onImage
 });
 
 export const ImageGridStep: React.FC<{ steps: StepResult[]; isLast: boolean; onImageClick?: (url: string) => void }> = memo(({ steps, isLast, onImageClick }) => {
+    const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+
+    const toggleStep = (stepNumber: number) => {
+        setExpandedSteps(prev => {
+            const next = new Set(prev);
+            if (next.has(stepNumber)) next.delete(stepNumber);
+            else next.add(stepNumber);
+            return next;
+        });
+    };
+
     return (
         <div className="relative pl-6 pb-6 last:pb-0 group">
             {!isLast && (
@@ -217,7 +240,16 @@ export const ImageGridStep: React.FC<{ steps: StepResult[]; isLast: boolean; onI
                                 Fig {step.step_number}: {step.step_description}
                             </span>
                             {step.detailed_description && step.step_type !== 'summary' && (
-                                <span className="text-[9px] text-muted-foreground font-mono pl-1 leading-snug break-words block">
+                                <button
+                                    onClick={() => toggleStep(step.step_number)}
+                                    className="flex items-center gap-1 text-[9px] text-muted-foreground/70 hover:text-muted-foreground transition-colors pl-1"
+                                >
+                                    {expandedSteps.has(step.step_number) ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                                    <span className="font-mono">{expandedSteps.has(step.step_number) ? 'Hide' : 'Show'} details</span>
+                                </button>
+                            )}
+                            {expandedSteps.has(step.step_number) && step.detailed_description && step.step_type !== 'summary' && (
+                                <span className="text-[9px] text-muted-foreground font-mono pl-1 leading-snug break-words block p-1 bg-muted/20 rounded">
                                     {step.detailed_description}
                                 </span>
                             )}

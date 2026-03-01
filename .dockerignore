@@ -1,0 +1,44 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+node_modules/
+
+# Git
+.git/
+.gitignore
+
+# Secrets & env
+.env
+.env.*
+secrets.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+tmp/
+temp/
+
+# Test / CI
+.pytest_cache/
+.coverage
+htmlcov/

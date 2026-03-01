@@ -68,6 +68,7 @@ static/
 
 todo.md
 todo
+docs/
 
 ./frontend/.node_modulesfrontend/node_modules/
 frontend/node_modules/

@@ -1,26 +1,51 @@
 import json
 import logging
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
 from app.core.prompts import ANALYSIS_FORMAT_PROMPT
-from app.core.llm import call_llm_with_usage, call_llm_stream
+from app.core.llm import call_llm_with_usage, call_llm_with_usage_async, call_llm_stream
 from app.core.token_tracker import TokenTracker
 from app.models.db_models import ChatSettings
 
 logger = logging.getLogger(__name__)
 
 
+class CancelledException(Exception):
+    """Raised when operation is cancelled by user."""
+    pass
+
+
 class BaseAgent(ABC):
-    def __init__(self, chat_settings: Optional[ChatSettings] = None):
+    def __init__(self, chat_settings: Optional[ChatSettings] = None, cancel_event: Optional[asyncio.Event] = None):
         if chat_settings is not None:
             self.chat_settings = chat_settings
         else:
             self.chat_settings = ChatSettings(zero_leaks_mode=False, max_row_limit=100)
         self.token_tracker = TokenTracker()
+        self.cancel_event = cancel_event
+    
+    def check_cancelled(self):
+        """Check if operation has been cancelled. Raises CancelledException if cancelled."""
+        if self.cancel_event and self.cancel_event.is_set():
+            raise CancelledException("Operation cancelled by user")
+    
+    async def check_cancelled_async(self):
+        """Async version of check_cancelled."""
+        if self.cancel_event and self.cancel_event.is_set():
+            raise CancelledException("Operation cancelled by user")
 
     def _call_llm_with_usage(self, messages: list, temperature: float = 0.0, timeout: int = 60) -> str:
+        self.check_cancelled()
         response = call_llm_with_usage(messages, temperature, timeout)
+        self.token_tracker.add(response)
+        return response.get("content", "")
+    
+    async def _call_llm_with_usage_async(self, messages: list, temperature: float = 0.0, timeout: int = 60) -> str:
+        """Async LLM call with cancellation support."""
+        await self.check_cancelled_async()
+        response = await call_llm_with_usage_async(messages, temperature, timeout)
         self.token_tracker.add(response)
         return response.get("content", "")
 
@@ -47,9 +72,12 @@ class BaseAgent(ABC):
                         f"Step {i}: Retrieved {result.get('total_rows', 0)} rows{col_info}, Data Sample: {result.get('data', [])[:10]}"
                     )
             elif result["type"] == "image":
-                summary_parts.append(
-                    f"Step {i}: Created visualization - {result.get('description', '')}"
-                )
+                if self.chat_settings.zero_leaks_mode is True:
+                    summary_parts.append(f"Step {i}: Created a visualization. Details REDACTED (Zero Leaks Mode).")
+                else:
+                    summary_parts.append(
+                        f"Step {i}: Created visualization - {result.get('description', '')}"
+                    )
             elif result["type"] == "text":
                 if self.chat_settings.zero_leaks_mode is True:
                     summary_parts.append(f"Step {i}: Text result REDACTED (Zero Leaks Mode).")
@@ -99,9 +127,12 @@ class BaseAgent(ABC):
                         f"Step {i}: Retrieved {result.get('total_rows', 0)} rows{col_info}, Data Sample: {result.get('data', [])[:10]}"
                     )
             elif result["type"] == "image":
-                summary_parts.append(
-                    f"Step {i}: Created visualization - {result.get('description', '')}"
-                )
+                if self.chat_settings.zero_leaks_mode is True:
+                    summary_parts.append(f"Step {i}: Created a visualization. Details REDACTED (Zero Leaks Mode).")
+                else:
+                    summary_parts.append(
+                        f"Step {i}: Created visualization - {result.get('description', '')}"
+                    )
             elif result["type"] == "text":
                 if self.chat_settings.zero_leaks_mode is True:
                     summary_parts.append(f"Step {i}: Text result REDACTED (Zero Leaks Mode).")

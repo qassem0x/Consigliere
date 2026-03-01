@@ -8,29 +8,8 @@ import contextlib
 import matplotlib.pyplot as plt
 import json_repair
 import numpy as np
-
 from typing import Dict, Any, List, Optional
-
-
-def _make_json_safe(value: Any) -> Any:
-    """Recursively convert value to JSON-serializable type"""
-    if isinstance(value, pd.DataFrame):
-        return _make_json_safe(value.to_dict(orient="records"))
-    elif isinstance(value, pd.Series):
-        return _make_json_safe(value.to_dict())
-    elif isinstance(value, np.integer):
-        return int(value)
-    elif isinstance(value, np.floating):
-        return float(value)
-    elif isinstance(value, np.ndarray):
-        return value.tolist()
-    elif isinstance(value, dict):
-        return {k: _make_json_safe(v) for k, v in value.items()}
-    elif isinstance(value, list):
-        return [_make_json_safe(item) for item in value]
-    elif pd.isna(value):
-        return None
-    return value
+from app.core.utils import make_json_safe
 
 
 from app.services.base_agent import BaseAgent
@@ -54,15 +33,15 @@ validate_env()
 
 
 class ExcelDataAgent(BaseAgent):
-    def __init__(self, file_path: str, chat_settings: Optional[ChatSettings] = None):
-        super().__init__(chat_settings)
+    def __init__(self, file_path: str, chat_settings: Optional[ChatSettings] = None, cancel_event=None):
+        super().__init__(chat_settings, cancel_event)
         print(f"DEBUG: Initializing ExcelDataAgent for {file_path}")
 
         if chat_settings is not None:
             self.chat_settings = chat_settings
         else:
             self.chat_settings = ChatSettings(zero_leaks_mode=False, max_row_limit=100)
-        print("DEBUG: chat_settings: ", self.chat_settings)
+        print(f"DEBUG: chat_settings: {self.chat_settings}")
         self.cache_manager = DataCache()
         self.df = self.cache_manager.get_data(file_path)
         print(
@@ -74,9 +53,12 @@ class ExcelDataAgent(BaseAgent):
 
         inference_engine = ExcelInferenceEngine(self.df)
         self.schema = inference_engine.infer()
-        print("SCHEMA: ", self.schema)
+        print(f"SCHEMA: {self.schema}")
 
-    def _consult_brain(self, user_query: str, history_str: str = ""):
+    async def _consult_brain(self, user_query: str, history_str: str = ""):
+        # Check for cancellation before starting plan generation
+        await self.check_cancelled_async()
+        
         messages = [
             {
                 "role": "system",
@@ -89,7 +71,8 @@ class ExcelDataAgent(BaseAgent):
         ]
 
         try:
-            response = self._call_llm_with_usage(messages, temperature=0.1, timeout=60)
+            # This also checks for cancellation before the LLM call
+            response = await self._call_llm_with_usage_async(messages, temperature=0.1, timeout=60)
 
             if "```" in response:
                 response = response.replace("```json", "").replace("```", "").strip()
@@ -124,7 +107,7 @@ class ExcelDataAgent(BaseAgent):
                 ],
             }
 
-    def _generate_step_code(
+    async def _generate_step_code(
         self, user_query, step: Dict[str, Any], prev_results: List[Dict[str, Any]]
     ):
         prev_summary = []
@@ -145,7 +128,9 @@ class ExcelDataAgent(BaseAgent):
                 )
             elif res["type"] == "text":
                 if self.chat_settings.zero_leaks_mode is True:
-                    prev_summary.append(f"Step {i}: Text result REDACTED (Zero Leaks Mode).")
+                    prev_summary.append(
+                        f"Step {i}: Text result REDACTED (Zero Leaks Mode)."
+                    )
                 else:
                     prev_summary.append(f"Step {i}: {res['data'][:100]}")
 
@@ -173,7 +158,7 @@ class ExcelDataAgent(BaseAgent):
         ]
 
         try:
-            code = self._call_llm_with_usage(messages, temperature=0.0, timeout=60)
+            code = await self._call_llm_with_usage_async(messages, temperature=0.0, timeout=60)
             return code
         except Exception as e:
             print(
@@ -181,7 +166,7 @@ class ExcelDataAgent(BaseAgent):
             )
             return f"result = 'Code generation failed for step {step['step_number']}: {str(e)}'\ndescription = 'Code generation failed'"
 
-    def _fix_step_code(
+    async def _fix_step_code(
         self,
         bad_code: str,
         error_msg: str,
@@ -205,11 +190,15 @@ class ExcelDataAgent(BaseAgent):
             }
         ]
         try:
-            fixed_code = self._call_llm_with_usage(messages, temperature=0.1, timeout=60)
+            fixed_code = await self._call_llm_with_usage_async(
+                messages, temperature=0.1, timeout=60
+            )
             print(f"DEBUG: Step {step['step_number']} fix code received")
             return fixed_code
         except Exception as e:
-            print(f"DEBUG: Fix code generation failed for step {step['step_number']}: {e}")
+            print(
+                f"DEBUG: Fix code generation failed for step {step['step_number']}: {e}"
+            )
             return bad_code  # return original; sanitize will catch it again
 
     def _sanitize_code(self, code_string: str) -> str:
@@ -443,7 +432,7 @@ class ExcelDataAgent(BaseAgent):
             plt.close("all")
             return {"type": "error", "data": f"Execution Error: {str(e)}"}
 
-    def answer(self, user_query: str, history_str: str = ""):
+    async def answer(self, user_query: str, history_str: str = ""):
         # 1. Consult the Brain (Unified Routing + Planning)
         yield json.dumps(
             {
@@ -453,13 +442,13 @@ class ExcelDataAgent(BaseAgent):
             }
         )
 
-        brain_output = self._consult_brain(user_query, history_str)
+        brain_output = await self._consult_brain(user_query, history_str)
         intent = brain_output.get("intent", "DATA_ACTION")
         enhanced_prompt = brain_output.get("enhanced_prompt", user_query)
 
         # 2. Handle Non-Data Intents
         if intent == "GENERAL_CHAT":
-            chat_response = self._generate_chat_response(user_query, history_str)
+            chat_response = await self._generate_chat_response(user_query, history_str)
             yield json.dumps(
                 {
                     "type": "final_result",
@@ -507,6 +496,9 @@ class ExcelDataAgent(BaseAgent):
         all_code = []
 
         for step in plan_steps:
+            # Check for cancellation before starting each step
+            self.check_cancelled()
+            
             step_start = {
                 "type": "step_start",
                 "step_number": step["step_number"],
@@ -528,7 +520,7 @@ class ExcelDataAgent(BaseAgent):
                 continue
 
             # Generate Code
-            raw_code = self._generate_step_code(enhanced_prompt, step, all_results)
+            raw_code = await self._generate_step_code(enhanced_prompt, step, all_results)
 
             # Retry loop: generate → sanitize → execute → self-correct on error
             max_code_retries = 3
@@ -541,19 +533,34 @@ class ExcelDataAgent(BaseAgent):
                     clean_code = self._sanitize_code(current_raw_code)
                     all_code.append(clean_code)
                 except Exception as sec_err:
-                    # Security violation — never retry, halt this step
-                    print(f"DEBUG: Step {step['step_number']} security violation: {sec_err}")
-                    exec_result = {
-                        "step_number": step["step_number"],
-                        "type": "error",
-                        "data": f"Security Error: {str(sec_err)}",
-                    }
-                    break
+                    sec_error_msg = str(sec_err)
+                    print(
+                        f"DEBUG: Step {step['step_number']} security violation: {sec_error_msg}"
+                    )
+                    last_error = f"Security Error: {sec_error_msg}"
+
+                    if code_attempt < max_code_retries - 1:
+                        print(
+                            f"DEBUG: Step {step['step_number']}: requesting security fix from LLM…"
+                        )
+                        current_raw_code = await self._fix_step_code(
+                            current_raw_code, last_error, step
+                        )
+                        continue
+                    else:
+                        exec_result = {
+                            "step_number": step["step_number"],
+                            "type": "error",
+                            "data": f"Security Error: {sec_error_msg}",
+                        }
+                        break
 
                 candidate = self._execute_code(clean_code)
-                candidate = _make_json_safe(candidate)
+                candidate = make_json_safe(candidate)
                 candidate["step_number"] = step["step_number"]
-                candidate["step_description"] = step.get("title", step.get("description", ""))
+                candidate["step_description"] = step.get(
+                    "title", step.get("description", "")
+                )
                 candidate["step_type"] = step["type"]
                 if step.get("detailed_description") and step["type"] != "summary":
                     candidate["detailed_description"] = step["detailed_description"]
@@ -573,7 +580,7 @@ class ExcelDataAgent(BaseAgent):
                     print(
                         f"DEBUG: Step {step['step_number']}: requesting code fix from LLM…"
                     )
-                    current_raw_code = self._fix_step_code(clean_code, last_error, step)
+                    current_raw_code = await self._fix_step_code(clean_code, last_error, step)
 
             # If every attempt failed, keep the last error result
             if exec_result is None:
@@ -640,18 +647,22 @@ class ExcelDataAgent(BaseAgent):
         try:
             dup_count = self.df.duplicated().sum()
             if dup_count > 0:
-                stats.append(f"Duplicate Rows: {dup_count:,} ({dup_count / len(self.df) * 100:.1f}%)")
-        except:
+                stats.append(
+                    f"Duplicate Rows: {dup_count:,} ({dup_count / len(self.df) * 100:.1f}%)"
+                )
+        except Exception:
             pass
 
         # Columns with nulls — report top 5 offenders
         try:
             null_counts = self.df.isnull().sum()
-            null_cols = null_counts[null_counts > 0].sort_values(ascending=False).head(5)
+            null_cols = (
+                null_counts[null_counts > 0].sort_values(ascending=False).head(5)
+            )
             for col, count in null_cols.items():
                 ratio = count / len(self.df) * 100
                 stats.append(f"Nulls in '{col}': {count:,} ({ratio:.1f}%)")
-        except:
+        except Exception:
             pass
 
         for col in self.df.select_dtypes(include=["datetime", "datetimetz"]).columns:
@@ -659,7 +670,7 @@ class ExcelDataAgent(BaseAgent):
                 start = self.df[col].min()
                 end = self.df[col].max()
                 stats.append(f"Timeframe ({col}): {start} to {end}")
-            except:
+            except Exception:
                 pass
 
         for col in self.df.select_dtypes(include=["object", "category"]).columns[:5]:
@@ -667,12 +678,14 @@ class ExcelDataAgent(BaseAgent):
                 unique_count = self.df[col].nunique()
                 if unique_count < 50 and unique_count > 0:
                     if self.chat_settings.zero_leaks_mode is True:
-                        stats.append(f"Distinct values in '{col}': {unique_count} (values REDACTED - Zero Leaks Mode)")
+                        stats.append(
+                            f"Distinct values in '{col}': {unique_count} (values REDACTED - Zero Leaks Mode)"
+                        )
                     else:
                         top_3 = self.df[col].value_counts().head(3)
                         top_list = [f"{val} ({count})" for val, count in top_3.items()]
                         stats.append(f"Top values in '{col}': {', '.join(top_list)}")
-            except:
+            except Exception:
                 pass
 
         for col in self.df.select_dtypes(include=["number"]).columns[:5]:
@@ -681,12 +694,12 @@ class ExcelDataAgent(BaseAgent):
                 mx = self.df[col].max()
                 mn = self.df[col].min()
                 stats.append(f"'{col}': Min={mn:,.2f}, Max={mx:,.2f}, Avg={avg:,.2f}")
-            except:
+            except Exception:
                 pass
 
         return "\n".join(stats)
 
-    def generate_dossier(self) -> dict:
+    async def generate_dossier(self) -> dict:
         """Generate initial briefing about the dataset"""
         stats_summary = self._calculate_stats()
 
@@ -708,7 +721,7 @@ class ExcelDataAgent(BaseAgent):
         ]
 
         try:
-            response_text = self._call_llm_with_usage(
+            response_text = await self._call_llm_with_usage_async(
                 messages, temperature=0.4, timeout=60
             )
 
@@ -720,7 +733,12 @@ class ExcelDataAgent(BaseAgent):
             parsed_json = json_repair.loads(response_text)
 
             if isinstance(parsed_json, dict):
-                required_fields = ["briefing", "key_entities", "data_alerts", "recommended_actions"]
+                required_fields = [
+                    "briefing",
+                    "key_entities",
+                    "data_alerts",
+                    "recommended_actions",
+                ]
                 for field in required_fields:
                     if field not in parsed_json:
                         parsed_json[field] = [] if field != "briefing" else "Unknown"
@@ -737,7 +755,7 @@ class ExcelDataAgent(BaseAgent):
                 "recommended_actions": ["Show me the data", "Count rows"],
             }
 
-    def _generate_chat_response(self, user_query: str, history_str: str = "") -> str:
+    async def _generate_chat_response(self, user_query: str, history_str: str = "") -> str:
         """Generate a conversational response for general chat queries."""
         messages = [
             {
@@ -756,7 +774,7 @@ Do NOT mention schema, columns, or technical details.""",
         messages.append({"role": "user", "content": user_query})
 
         try:
-            response = self._call_llm_with_usage(messages, temperature=0.7, timeout=30)
+            response = await self._call_llm_with_usage_async(messages, temperature=0.7, timeout=30)
             return response.strip()
         except Exception as e:
             print(f"DEBUG: Chat response error: {e}")
@@ -770,7 +788,7 @@ Do NOT mention schema, columns, or technical details.""",
 
         try:
             schema_json = json.loads(self.schema)
-        except:
+        except Exception:
             schema_json = {"sheets": [{"columns": []}]}
 
         sheets = schema_json.get("sheets", [])

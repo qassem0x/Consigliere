@@ -117,7 +117,7 @@ export const DashboardPage: React.FC = () => {
                 let content = m.content;
                 let tableData = null;
                 let imageData = null;
-                let steps = null;
+                let steps = m.steps || null;
                 let plan = null;
 
                 if (m.role === 'assistant') {
@@ -127,13 +127,8 @@ export const DashboardPage: React.FC = () => {
                         if (parsed && typeof parsed === 'object') {
                             content = parsed.text || m.content;
 
-                            // Multi-step response
-                            if (parsed.steps && Array.isArray(parsed.steps)) {
-                                steps = parsed.steps;
-                                plan = parsed.plan;
-                            }
                             // Single-step response (backward compatible)
-                            else if (parsed.result) {
+                            if (parsed.result) {
                                 if (parsed.result.type === 'table') {
                                     tableData = parsed.result.data;
                                 } else if (parsed.result.type === 'image') {
@@ -146,6 +141,7 @@ export const DashboardPage: React.FC = () => {
 
                 return {
                     id: m.id,
+                    parent_id: m.parent_id,
                     role: m.role,
                     content,
                     created_at: m.created_at,
@@ -300,6 +296,17 @@ export const DashboardPage: React.FC = () => {
                                         total_tokens: chunk.data.token_usage?.total_tokens,
                                         prompt_tokens: chunk.data.token_usage?.prompt_tokens,
                                         completion_tokens: chunk.data.token_usage?.completion_tokens,
+                                    }
+                                    : msg
+                            ));
+                        }
+                        else if (chunk.type === 'final') {
+                            setMessages(prev => prev.map(msg =>
+                                msg.id === assistantMsgId
+                                    ? {
+                                        ...msg,
+                                        id: chunk.message_id,
+                                        parent_id: chunk.parent_id,
                                     }
                                     : msg
                             ));
@@ -468,6 +475,7 @@ export const DashboardPage: React.FC = () => {
                         completion: messages.reduce((acc, m) => acc + (m.completion_tokens || 0), 0),
                         messages: messages.filter(m => m.role === 'assistant' && m.total_tokens).length
                     } : undefined}
+                    zeroLeaksMode={view === 'chat' ? userChats.find(c => c.id === activeChatId)?.settings?.zero_leaks_mode ?? false : undefined}
                 />
 
                 <div className="flex-1 relative overflow-hidden">

@@ -78,6 +78,8 @@ PLAN STRUCTURE RULES
 - Step 1 MUST establish baseline metric or core table.
 - Each step must reveal NEW information.
 - Final step MUST be a prioritized summary with business interpretation.
+- Avoid redundant actions; ensure each step introduces distinct and meaningful information.
+- CRITICAL: Each step's detailed_description must spell out EXACT actions (calculations, comparisons, identifications) — think of it as a task list for the executor.
 
 Pattern by query type:
 
@@ -108,18 +110,29 @@ Your plan MUST include logic to:
 - Prioritize insights by impact
 
 --------------------------------------------------
-STEP DESCRIPTION RULES
+STEP DESCRIPTION RULES (CRITICAL)
 --------------------------------------------------
 
-Each step’s detailed_description must:
+Each step's detailed_description must specify in DETAIL the EXACT ACTIONS the step executor should perform.
 
-- Describe WHAT will be analyzed
-- NEVER include actual numbers
-- NEVER mention specific entities
-- NEVER reveal results (data not retrieved yet)
+For each step, specify:
+1. What CALCULATIONS to perform (aggregations, groupings, etc.)
+2. What COMPARISONS to make (vs baseline, top vs bottom, etc.)
+3. What IDENTIFICATIONS to do (top performers, concentration, outliers, etc.)
 
-Example:
-"This step will calculate total 'SalesAmount' and compare it across 'Region' to identify concentration patterns and dominant segments."
+Be extremely specific about what the executor MUST do — think of it as a task list.
+
+Examples:
+- "Calculate total SalesAmount grouped by Region. For each region: compute SUM, compute % of grand total. Identify which region has highest sales. Flag if top region >40% of total (concentration risk). Rank regions by sales descending."
+- "Aggregate SalesAmount by Month using date column. Calculate month-over-month growth rate (current - previous / previous * 100). Identify if growth is positive or negative each month. Return monthly totals with growth rates in chronological order."
+- "Group data by Category. Compute average Price per category. Compare each category avg to overall avg. Identify categories above/below average. Rank by average price descending."
+
+NEVER write vague descriptions like:
+- "Analyze sales by region" (too broad)
+- "Show trends over time" (too vague)
+- "Calculate metrics" (useless)
+
+ALWAYS spell out the exact operations:
 
 --------------------------------------------------
 OUTPUT FORMAT (STRICT JSON)
@@ -346,6 +359,7 @@ Instructions:
    - result variable MUST be assigned.
    - description variable MUST be assigned as a string.
    - chart steps: no plt.show(), no plt.savefig().
+   - DO NOT use: os, sys, subprocess, open, __import__, exec, eval, compile, importlib, globals, locals, vars, dir, or dunder attributes.
 4. If a column is missing, compute the next best equivalent metric from the available schema.
 
 Return ONLY the corrected Python code.

@@ -46,3 +46,20 @@ def add_to_blacklist(token: str):
 
 def is_token_blacklisted(token: str) -> bool:
     return token in token_blacklist
+
+
+def decode_token(token: str) -> dict | None:
+    """Decode a JWT token and return payload, or None if invalid."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except Exception:
+        return None
+
+
+def is_refresh_token(token: str) -> bool:
+    """Check if a token is a refresh token."""
+    payload = decode_token(token)
+    if payload:
+        return payload.get("type") == "refresh"
+    return False

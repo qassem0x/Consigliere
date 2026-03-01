@@ -10,14 +10,17 @@ interface MessageBubbleProps {
     idx: number;
     showSteps?: boolean;
     isSelected?: boolean;
+    hasResponse?: boolean;
     onClick?: () => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx, showSteps = true, isSelected, onClick }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx, showSteps = true, isSelected, hasResponse = true, onClick }) => {
     const isAssistant = msg.role === 'assistant';
+    const isUserWithoutResponse = msg.role === 'user' && !hasResponse;
     const hasSteps = msg.steps && msg.steps.length > 0;
     const isStreaming = msg.streamingStatus && msg.streamingStatus !== 'complete';
     const hasTokenUsage = msg.total_tokens !== undefined && msg.total_tokens > 0;
+    const isIncompleteAssistant = isAssistant && (msg.streamingStatus === 'error' || msg.streamingStatus === 'cancelled' || !msg.content);
 
     return (
             <div
@@ -92,7 +95,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx, sho
                         )}
                     </div>
 
-                    {isAssistant && hasSteps && !showSteps && (
+                    {(isUserWithoutResponse || isIncompleteAssistant) && (
+                    <span className={cn(
+                        "text-[10px] mt-1 text-muted-foreground/60",
+                        isIncompleteAssistant ? "text-red-500" : "text-amber-500"
+                    )}>
+                        {isUserWithoutResponse ? 'No response' : 'Incomplete'}
+                    </span>
+                )}
+
+                {isAssistant && hasSteps && !showSteps && (
                         <div className="mt-3 pt-2 border-t flex justify-end">
                             <button
                                 onClick={(e) => {

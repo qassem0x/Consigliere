@@ -137,6 +137,16 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
         messages[messages.length - 1]?.id || null
     );
 
+    const userMessageIdsWithResponse = React.useMemo(() => {
+        const ids = new Set<string>();
+        messages.forEach(msg => {
+            if (msg.role === 'assistant' && msg.parent_id) {
+                ids.add(msg.parent_id);
+            }
+        });
+        return ids;
+    }, [messages]);
+
     useEffect(() => {
         if (isLoading) {
             const lastMsg = messages[messages.length - 1];
@@ -154,7 +164,8 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
     }, [messages, isLoading, selectedMessageId]);
 
     const selectedMessage = messages.find(m => m.id === selectedMessageId);
-
+    console.log("selectedMessage: ")
+    console.log(selectedMessage)
     return (
         <div className="absolute inset-0 flex bg-background overflow-hidden">
             {/* Left Panel: Chat Stream */}
@@ -185,6 +196,7 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
                                     idx={idx}
                                     showSteps={false}
                                     isSelected={msg.id === selectedMessageId}
+                                    hasResponse={msg.role === 'user' ? userMessageIdsWithResponse.has(msg.id!) : true}
                                     onClick={() => setSelectedMessageId(msg.id || null)}
                                 />
                             ))}

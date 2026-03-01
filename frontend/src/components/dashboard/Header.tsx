@@ -1,5 +1,5 @@
 import React from 'react';
-import { PanelLeftClose, PanelLeft, Zap } from 'lucide-react';
+import { PanelLeftClose, PanelLeft, Zap, Shield } from 'lucide-react';
 
 interface HeaderProps {
     isSidebarOpen: boolean;
@@ -12,9 +12,10 @@ interface HeaderProps {
         completion: number;
         messages: number;
     };
+    zeroLeaksMode?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, view, onToggleSidebar, modelName, chatTokenStats }) => {
+export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, view, onToggleSidebar, modelName, chatTokenStats, zeroLeaksMode }) => {
     return (
         <header className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-[#050505]/80 backdrop-blur-md z-20">
             <div className="flex items-center gap-4">
@@ -32,8 +33,12 @@ export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, view, onToggleSid
                         <span className="text-xs font-mono text-slate-500 uppercase tracking-widest">Command Center</span>
                     ) : (
                         <>
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_10px_rgba(244,63,94,0.5)]"></span>
-                            <span className="text-xs font-mono text-rose-500 uppercase tracking-widest font-bold">Active Uplink</span>
+                            <span className={`w-2 h-2 rounded-full ${zeroLeaksMode 
+                                ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]' 
+                                : 'bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.6)]'} animate-pulse`}></span>
+                            <span className={`text-xs font-mono uppercase tracking-widest font-bold ${zeroLeaksMode ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                {zeroLeaksMode ? 'Zero Leaks' : 'Standard'}
+                            </span>
                         </>
                     )}
                 </div>

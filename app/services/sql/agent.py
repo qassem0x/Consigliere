@@ -16,6 +16,7 @@ from app.core.prompts import (
     SUMMARY_SYNTHESIS_PROMPT,
 )
 from app.core.token_tracker import TokenTracker
+from app.core.utils import make_json_safe
 from app.models.db_models import ChatSettings
 from app.services.base_agent import BaseAgent
 from app.services.sql.cache import SQLAgentCache
@@ -36,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 
 class SQLAgent(BaseAgent):
-    def __init__(self, connection_string: str, chat_settings: ChatSettings):
-        super().__init__(chat_settings)
+    def __init__(self, connection_string: str, chat_settings: ChatSettings, cancel_event=None):
+        super().__init__(chat_settings, cancel_event)
         self.connection_string = connection_string
         if chat_settings is not None:
             self.chat_settings = chat_settings
@@ -301,8 +302,11 @@ class SQLAgent(BaseAgent):
                 "data": f"Chart generation failed: {str(e)}",
             }
 
-    def _consult_brain(self, user_query: str, history_str: str = "") -> Dict[str, Any]:
+    async def _consult_brain(self, user_query: str, history_str: str = "") -> Dict[str, Any]:
         """Consult the planning brain to generate analysis plan."""
+        # Check for cancellation before starting plan generation
+        await self.check_cancelled_async()
+        
         history_content = history_str if history_str else "No previous conversation."
         brain_content = (
             SQL_BRAIN_PROMPT
@@ -318,7 +322,8 @@ class SQLAgent(BaseAgent):
         ]
 
         try:
-            response = self._call_llm_with_usage(messages, temperature=0.1, timeout=60)
+            # This also checks for cancellation before the LLM call
+            response = await self._call_llm_with_usage_async(messages, temperature=0.1, timeout=60)
             logger.info(f"RAW BRAIN RESPONSE:\n{response}")
             if "```" in response:
                 response = response.replace("```json", "").replace("```", "").strip()
@@ -732,13 +737,13 @@ class SQLAgent(BaseAgent):
         )
         return "Summary generation failed. See individual step results above for details."
 
-    def answer(self, user_query: str, history_str: str = ""):
+    async def answer(self, user_query: str, history_str: str = ""):
         """Main method to answer user queries."""
-        brain_output = self._consult_brain(user_query, history_str)
+        brain_output = await self._consult_brain(user_query, history_str)
         intent = brain_output.get("intent", "DATA_ACTION")
         enhanced_prompt = brain_output.get("enhanced_prompt", user_query)
 
-        print("DEGUG:", brain_output)
+        print("DEBUG:", brain_output)
 
         # Handle non-data intents
         if intent == "GENERAL_CHAT":
@@ -803,6 +808,9 @@ class SQLAgent(BaseAgent):
 
         # Execute each step in the plan
         for step in plan:
+            # Check for cancellation before starting each step
+            await self.check_cancelled_async()
+            
             if isinstance(step, str):
                 step = json_repair.loads(step)
             step_type = step.get("type", "table")
@@ -1074,7 +1082,7 @@ class SQLAgent(BaseAgent):
                     {
                         "type": "table",
                         "table_name": table_name,
-                        "data": df_table.fillna("").to_dict(orient="records"),
+                        "data": make_json_safe(df_table.fillna("").to_dict(orient="records")),
                         "columns": list(df_table.columns),
                         "total_rows": len(df_table),
                         "description": f"Schema for {table_name}",

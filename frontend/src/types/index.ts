@@ -47,6 +47,7 @@ export interface Dossier {
 
 export interface Message {
     id?: string;
+    parent_id?: string;
     role: 'user' | 'assistant';
     content: string;
     created_at?: string;

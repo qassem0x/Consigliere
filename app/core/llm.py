@@ -1,6 +1,7 @@
 import os
 import logging
-from litellm import completion
+import asyncio
+from litellm import completion, acompletion
 import litellm
 from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.config import MODEL_NAME, validate_env
@@ -144,6 +145,43 @@ def call_llm_with_usage(
     except litellm.exceptions.Timeout as e:
         logger.error(f"TIMEOUT: {e}")
         raise Exception("LLM request timed out. Try a simpler query.")
+    except Exception as e:
+        logger.error(f"LLM ERROR: {e}")
+        raise Exception(f"LLM service error: {str(e)}")
+
+
+async def call_llm_with_usage_async(
+    messages: list, temperature: float = 0.0, timeout: int = 60
+) -> dict:
+    """Async version of call_llm_with_usage with cancellation support."""
+    _validate_llm_params(temperature, timeout)
+    try:
+        response = await asyncio.wait_for(
+            acompletion(
+                model=MODEL_NAME,
+                messages=messages,
+                temperature=temperature,
+            ),
+            timeout=timeout
+        )
+        content = response.choices[0].message.content.strip()
+
+        usage = {
+            "content": content,
+            "model": response.model,
+            "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
+            "completion_tokens": (
+                response.usage.completion_tokens if response.usage else 0
+            ),
+            "total_tokens": response.usage.total_tokens if response.usage else 0,
+        }
+        return usage
+    except asyncio.TimeoutError:
+        logger.error(f"TIMEOUT: {timeout}s exceeded")
+        raise Exception("LLM request timed out. Try a simpler query.")
+    except litellm.exceptions.RateLimitError as e:
+        logger.error(f"RATE LIMIT HIT: {e}")
+        raise Exception("Rate limit exceeded. Please wait a moment and try again.")
     except Exception as e:
         logger.error(f"LLM ERROR: {e}")
         raise Exception(f"LLM service error: {str(e)}")

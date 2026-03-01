@@ -66,9 +66,45 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/refresh", response_model=TokenRefresh)
-def refresh_token(current_user: User = Depends(get_current_user)):
-    """Refresh access token using refresh token"""
-    access_token = security.create_access_token(data={"sub": str(current_user.id)})
+def refresh_token(refresh_token: str = Query(...), db: Session = Depends(get_db)):
+    """Refresh access token using refresh token from query param"""
+    payload = security.decode_token(refresh_token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+    
+    if not security.is_refresh_token(refresh_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+        )
+    
+    user_id_str: str | None = payload.get("sub")
+    if not user_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+    
+    from uuid import UUID
+    try:
+        user_id = UUID(user_id_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user ID in token",
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+    
+    access_token = security.create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer"}
 
 

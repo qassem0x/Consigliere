@@ -314,6 +314,8 @@ Behavior:
 
 Final step MUST always be "summary".
 
+CRITICAL: Each step's detailed_description must spell out EXACT SQL operations (aggregations, groupings, rankings, comparisons) — think of it as a task list for the SQL generator.
+
 --------------------------------------------------
 6️⃣ CHART AUTOMATION (IMPORTANT)
 --------------------------------------------------
@@ -331,14 +333,29 @@ For visualization types:
 - Use bar as default when unsure
 
 --------------------------------------------------
-5️⃣ STEP DESCRIPTION RULES
+5️⃣ STEP DESCRIPTION RULES (CRITICAL)
 --------------------------------------------------
 
-Each detailed_description must:
-- Describe WHAT will be analyzed.
-- NEVER include actual numbers.
-- NEVER reveal results.
-- Focus on analytical intent.
+Each detailed_description must specify in DETAIL the EXACT ACTIONS the step executor should perform.
+
+For each step, specify:
+1. What CALCULATIONS to perform (SUM, AVG, COUNT, etc.)
+2. What GROUPINGS to use (which columns to GROUP BY)
+3. What IDENTIFICATIONS to do (top N, rankings, concentration, trends)
+
+Be extremely specific about what the SQL generator MUST do — think of it as a task list.
+
+Examples:
+- "Write SQL to compute SUM of Revenue grouped by ProductCategory. Include each category's total. Compute each category's % of grand total using window function. Order by total DESC. Return top 10 categories with their totals and percentages."
+- "Write SQL to aggregate SalesAmount by month using date_trunc('month'). Calculate month-over-month growth: (current_month - previous_month) / previous_month * 100. Order results chronologically. Include columns: month, total_sales, mom_growth_rate."
+- "Write SQL to find top 10 customers by total spending. Use SUM of OrderAmount. Include customer name, total_spent, order_count. Compute average order value (total_spent / order_count). Rank by total_spent descending."
+
+NEVER write vague descriptions like:
+- "Analyze sales by category" (too broad)
+- "Show trends over time" (too vague)
+- "Get top customers" (missing ranking number, what columns to include)
+
+ALWAYS spell out the exact SQL operations:
 
 enhanced_query MUST be:
    - A cleaned natural-language analytical objective.

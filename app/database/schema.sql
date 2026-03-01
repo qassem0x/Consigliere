@@ -68,14 +68,16 @@ CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     role VARCHAR(50) NOT NULL,            
-    content TEXT NOT NULL,                
+    content TEXT NOT NULL,
+    parent_id UUID REFERENCES messages(id) ON DELETE SET NULL,
     artifacts JSONB,
     related_code JSONB,                   
     steps JSONB,
     prompt_tokens INTEGER DEFAULT 0,
     completion_tokens INTEGER DEFAULT 0,
     total_tokens INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE chat_settings (
@@ -91,3 +93,4 @@ CREATE INDEX idx_files_user_id ON files(user_id);
 CREATE INDEX idx_connections_user_id ON connections(user_id);
 CREATE INDEX idx_chats_user_id ON chats(user_id);
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
+CREATE INDEX idx_messages_parent_id ON messages(parent_id);
