@@ -131,9 +131,9 @@ def delete_chat(
     if target_file:
         file_path = "data/" + chat.file.file_path
         if file_path:
-            from app.services.excel.cache import DataCache
+            from app.agents.cache import InMemoryCache
 
-            cache = DataCache()
+            cache = InMemoryCache()
             cache.invalidate(file_path)
 
             import os
@@ -155,9 +155,9 @@ def delete_chat(
 
                 decrypted_conn_str = fernet.decrypt(encrypted_conn_str).decode()
 
-                from app.services.sql.cache import SQLAgentCache
+                from app.agents.cache import SQLCacheManager
 
-                cache = SQLAgentCache()
+                cache = SQLCacheManager()
                 cache.invalidate_connection(connection_string=decrypted_conn_str)
 
             except Exception as e:

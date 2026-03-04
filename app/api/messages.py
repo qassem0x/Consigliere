@@ -11,9 +11,8 @@ from app.core.config import ENCRYPTION_KEY, validate_env
 from app.core.utils import sanitize_nan
 from app.models.db_models import User, Chat, Message, ChatSettings
 from app.models.messages import MessageCreate, MessageOut
-from app.services.excel.agent import ExcelDataAgent
-from app.services.sql.agent import SQLAgent
-from app.services.base_agent import CancelledException
+from app.agents import ExcelAgent, SQLAgent
+from app.agents.base import CancelledException
 from cryptography.fernet import Fernet
 import json
 from datetime import datetime
@@ -125,7 +124,7 @@ async def send_message(
         chat_settings = (
             db.query(ChatSettings).where(ChatSettings.chat_id == chat_id).first()
         )
-        agent = ExcelDataAgent(path, chat_settings=chat_settings, cancel_event=cancel_event)
+        agent = ExcelAgent(path, chat_settings=chat_settings, cancel_event=cancel_event)
     elif chat.connection_id:
         code_type = "sql"
         if not chat.connection.connection_string:

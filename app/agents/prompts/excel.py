@@ -26,7 +26,7 @@ If the user asks about schema or structure → MUST classify as METADATA.
 Only use DATA_ACTION for real analytical questions.
 
 For GENERAL_CHAT intent:
-- Generate a brief, friendly response (1-2 sentences max)
+- Generate a Brief, friendly response (1-2 sentences max)
 - Do NOT include schema details or technical information
 - Example: "Hi! I'm Consigliere, your data analysis assistant. Upload a file and ask me anything about your data!"
 

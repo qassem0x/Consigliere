@@ -1,10 +1,11 @@
 import json
 import pandas as pd
 import numpy as np
-from datetime import datetime, date
 
 
 class ExcelInferenceEngine:
+    """Inference engine for Excel/spreadsheet files."""
+
     def __init__(self, df: pd.DataFrame):
         if not isinstance(df, pd.DataFrame):
             raise ValueError("Expected a pandas DataFrame")

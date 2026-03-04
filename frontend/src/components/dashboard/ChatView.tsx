@@ -24,18 +24,29 @@ interface ChatViewProps {
 export const MessageTable: React.FC<{ data: any[]; compact?: boolean }> = memo(({ data, compact }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    if (!data || data.length === 0) return null;
+    if (!data) return null;
+    
+    let dataArray: any[] = data;
+    if (Array.isArray(data)) {
+        dataArray = data;
+    } else if (typeof data === 'object') {
+        dataArray = [data];
+    } else {
+        return null;
+    }
 
-    const headers = Object.keys(data[0]);
+    if (dataArray.length === 0) return null;
+
+    const headers = Object.keys(dataArray[0]);
     const ROW_LIMIT = compact ? 5 : 10;
-    const hasMore = data.length > ROW_LIMIT;
+    const hasMore = dataArray.length > ROW_LIMIT;
 
-    const displayedData = isExpanded ? data : data.slice(0, ROW_LIMIT);
+    const displayedData = isExpanded ? dataArray : dataArray.slice(0, ROW_LIMIT);
 
     const downloadCSV = () => {
         const csvContent = [
             headers.join(','),
-            ...data.map(row =>
+            ...dataArray.map(row =>
                 headers.map(header => {
                     const value = row[header];
                     if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
@@ -87,11 +98,17 @@ export const MessageTable: React.FC<{ data: any[]; compact?: boolean }> = memo((
                     <tbody className="text-sm">
                         {displayedData.map((row, i) => (
                             <tr key={i} className="border-b last:border-0 hover:bg-muted/50 transition-colors">
-                                {headers.map(h => (
-                                    <td key={h} className="px-4 py-2 whitespace-nowrap">
-                                        {row[h]}
-                                    </td>
-                                ))}
+                                {headers.map(h => {
+                                    const value = row[h];
+                                    const displayValue = typeof value === 'object' && value !== null 
+                                        ? JSON.stringify(value) 
+                                        : value;
+                                    return (
+                                        <td key={h} className="px-4 py-2 whitespace-nowrap">
+                                            {displayValue}
+                                        </td>
+                                    );
+                                })}
                             </tr>
                         ))}
                     </tbody>

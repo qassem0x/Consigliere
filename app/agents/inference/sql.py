@@ -19,6 +19,8 @@ from sqlalchemy.types import (
 
 
 class SemanticInferenceEngine:
+    """Inference engine for SQL databases."""
+
     def __init__(self, engine, schema=None):
         self.engine = engine
         self.inspector = inspect(self.engine)

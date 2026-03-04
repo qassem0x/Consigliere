@@ -122,7 +122,7 @@ export const TimelineStep: React.FC<{ step: StepResult; isLast: boolean; onImage
                 </div>
 
                 <div className="text-xs text-foreground font-medium">
-                    {step.step_description}
+                    {typeof step.step_description === 'string' ? step.step_description : JSON.stringify(step.step_description)}
                 </div>
 
                 {step.detailed_description && step.step_type !== 'summary' && (

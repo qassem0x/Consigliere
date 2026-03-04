@@ -9,7 +9,7 @@ from app.models.db_models import Connection
 from app.core.database import get_db
 from app.core.config import ENCRYPTION_KEY, validate_env
 from cryptography.fernet import Fernet
-from app.services.sql.agent import SQLAgent
+from app.agents import SQLAgent
 
 validate_env()
 
