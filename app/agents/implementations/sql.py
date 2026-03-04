@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, AsyncGenerator
+from typing import Any, Dict, List, Optional, AsyncGenerator, TYPE_CHECKING
 
 import json_repair
 import pandas as pd
@@ -24,6 +24,9 @@ from app.agents.prompts import (
 )
 from app.models.db_models import ChatSettings
 
+if TYPE_CHECKING:
+    from app.agents.memory.chat_memory import ChatMemory
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +41,7 @@ class SQLAgent(BaseAgent):
         cancel_event=None,
         executor: Optional[SQLExecutor] = None,
         schema_inference: Optional[callable] = None,
+        chat_memory: Optional["ChatMemory"] = None,
     ):
         # Detect old vs new API: if first arg is a string, it's connection_string (old API)
         if isinstance(llm, str):
@@ -58,6 +62,7 @@ class SQLAgent(BaseAgent):
         self.connection_string = connection_string
         self._executor = executor
         self._schema_inference = schema_inference
+        self._chat_memory = chat_memory
         self.target_db = connection_string.split(":")[0]
         self.max_retries = 3
 
@@ -75,6 +80,10 @@ class SQLAgent(BaseAgent):
                 max_retries=self.max_retries,
             )
         return self._executor
+
+    @property
+    def chat_memory(self) -> Optional["ChatMemory"]:
+        return self._chat_memory
 
     @property
     def cache(self) -> SQLCacheManager:
@@ -516,7 +525,7 @@ class SQLAgent(BaseAgent):
         self, step: Dict[str, Any], user_query: str, all_results: List[Dict[str, Any]]
     ) -> str:
         """Execute a summary step."""
-        from app.core.prompts import SUMMARY_SYNTHESIS_PROMPT
+        from app.agents.prompts.base import SUMMARY_SYNTHESIS_PROMPT
 
         context_str = ""
         for res in all_results:
@@ -720,7 +729,7 @@ class SQLAgent(BaseAgent):
 
     async def generate_dossier(self) -> dict:
         """Generate database dossier."""
-        from app.core.prompts import DOSSIER_PROMPT
+        from app.agents.prompts.base import DOSSIER_PROMPT
 
         messages = [
             {

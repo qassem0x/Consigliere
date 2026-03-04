@@ -1,3 +1,9 @@
+from app.agents.prompts.base import (
+    SUMMARY_SYNTHESIS_PROMPT,
+    ANALYSIS_FORMAT_PROMPT,
+    DOSSIER_PROMPT,
+)
+
 from app.agents.prompts.excel import (
     EXCEL_BRAIN_PROMPT,
     STEP_EXECUTOR_PROMPT,
@@ -15,6 +21,10 @@ from app.agents.prompts.sql import (
 )
 
 __all__ = [
+    # Base prompts
+    "SUMMARY_SYNTHESIS_PROMPT",
+    "ANALYSIS_FORMAT_PROMPT",
+    "DOSSIER_PROMPT",
     # Excel prompts
     "EXCEL_BRAIN_PROMPT",
     "STEP_EXECUTOR_PROMPT",

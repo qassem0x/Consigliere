@@ -13,6 +13,7 @@ from app.models.db_models import User, Chat, Message, ChatSettings
 from app.models.messages import MessageCreate, MessageOut
 from app.agents import ExcelAgent, SQLAgent
 from app.agents.base import CancelledException
+from app.agents.memory.chat_memory import ChatMemory
 from cryptography.fernet import Fernet
 import json
 from datetime import datetime
@@ -82,25 +83,8 @@ async def send_message(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    chat_history = (
-        db.query(Message)
-        .filter(Message.chat_id == chat_id)
-        .order_by(Message.created_at.desc())
-        .limit(6)
-        .all()
-    )
-
-    history_str = ""
-    for msg in reversed(chat_history):
-        content = msg.content
-        if str(msg.role) == "assistant":
-            try:
-                content_dict = json.loads(str(msg.content))
-                content = content_dict.get("text", msg.content)[:300]
-            except Exception as parse_err:
-                print(f"DEBUG: Failed to parse assistant message content: {parse_err}")
-        content = content[:300] + ("..." if len(content) > 300 else "")
-        history_str += f"{msg.role.capitalize()}: {content}\n"
+    memory = ChatMemory(chat_id=chat_id, db=db, max_messages=20)
+    history_str = memory.get_context(include_code=True, include_steps=True)
 
     user_msg = Message(chat_id=chat_id, role="user", content=msg_data.content)
 
@@ -124,7 +108,12 @@ async def send_message(
         chat_settings = (
             db.query(ChatSettings).where(ChatSettings.chat_id == chat_id).first()
         )
-        agent = ExcelAgent(path, chat_settings=chat_settings, cancel_event=cancel_event)
+        agent = ExcelAgent(
+            path,
+            chat_settings=chat_settings,
+            cancel_event=cancel_event,
+            chat_memory=memory,
+        )
     elif chat.connection_id:
         code_type = "sql"
         if not chat.connection.connection_string:
@@ -154,6 +143,7 @@ async def send_message(
                 decrypted_conn_str,
                 chat_settings=chat_settings,
                 cancel_event=cancel_event,
+                chat_memory=memory,
             )
             print(f"DEBUG: Successfully initialized SQLAgent for chat {chat_id}")
         except Exception as agent_err:

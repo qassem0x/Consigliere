@@ -99,7 +99,7 @@ class BaseAgent(ABC):
         self, user_query: str, all_results: List[Dict[str, Any]]
     ) -> AsyncGenerator[str, None]:
         """Stream final response token by token."""
-        from app.core.prompts import ANALYSIS_FORMAT_PROMPT
+        from app.agents.prompts.base import ANALYSIS_FORMAT_PROMPT
 
         summary_parts = []
         for i, result in enumerate(all_results, 1):

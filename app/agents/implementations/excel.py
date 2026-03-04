@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, AsyncGenerator, Callable
+from typing import Any, Dict, List, Optional, AsyncGenerator, Callable, TYPE_CHECKING
 
 import json_repair
 import pandas as pd
@@ -13,6 +13,9 @@ from app.agents.cache import InMemoryCache
 from app.agents.inference import ExcelInferenceEngine
 from app.agents.prompts import EXCEL_BRAIN_PROMPT, STEP_EXECUTOR_PROMPT, CODE_FIX_PROMPT
 from app.models.db_models import ChatSettings
+
+if TYPE_CHECKING:
+    from app.agents.memory.chat_memory import ChatMemory
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,7 @@ class ExcelAgent(BaseAgent):
         cancel_event=None,
         executor: Optional[PythonSandboxExecutor] = None,
         schema_inference: Optional[Callable[..., str]] = None,
+        chat_memory: Optional["ChatMemory"] = None,
     ):
         # Detect old vs new API: if first arg is a string, it's file_path (old API)
         # If it's an ILanguageModel, it's llm (new API)
@@ -50,6 +54,7 @@ class ExcelAgent(BaseAgent):
         self.file_path = file_path
         self._executor = executor
         self._schema_inference = schema_inference
+        self._chat_memory = chat_memory
 
         self.df = self._load_data(file_path)
         if self.df is None:
@@ -72,6 +77,10 @@ class ExcelAgent(BaseAgent):
                 plots_dir="static/plots",
             )
         return self._executor
+
+    @property
+    def chat_memory(self) -> Optional["ChatMemory"]:
+        return self._chat_memory
 
     def _infer_schema(self) -> str:
         """Infer schema from dataframe."""
@@ -496,7 +505,7 @@ Do NOT mention schema, columns, or technical details.""",
 
     async def generate_dossier(self) -> dict:
         """Generate initial briefing about the dataset."""
-        from app.core.prompts import DOSSIER_PROMPT
+        from app.agents.prompts.base import DOSSIER_PROMPT
 
         stats_summary = self._calculate_stats()
 

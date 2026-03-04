@@ -77,7 +77,7 @@ Each step MUST include:
 - step_number
 - type: metric | table | chart | summary | metadata
 - title
-- detailed_description (EXACT executor actions)
+- detailed_description (It should be extremely detailed and clearly describe exactly what you intend to execute and what do you want user to see, but without limiting it to explicit technical specifics.)
 - chart_type: bar | line | scatter | pie | none
 
 Rules:
