@@ -85,6 +85,7 @@ CREATE TABLE chat_settings (
     chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     zero_leaks_mode BOOLEAN DEFAULT FALSE,
     max_row_limit INTEGER DEFAULT 100,
+    custom_prompt TEXT,
     CONSTRAINT unique_chat_settings UNIQUE (chat_id)
 ) 
 

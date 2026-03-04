@@ -123,7 +123,11 @@ def create_connection(
                 user_id=user.id,
                 connection_id=new_connection.id,
                 dossier_id=new_dossier.id,
-                title=connection.title if connection.title else f"Analysis: {connection.name}",
+                title=(
+                    connection.title
+                    if connection.title
+                    else f"Analysis: {connection.name}"
+                ),
             )
             db.add(new_chat)
             db.flush()

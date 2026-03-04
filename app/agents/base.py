@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class CancelledException(Exception):
     """Raised when operation is cancelled by user."""
+
     pass
 
 
@@ -49,7 +50,7 @@ class BaseAgent(ABC):
             self.chat_settings = chat_settings
         else:
             self.chat_settings = ChatSettings(zero_leaks_mode=False, max_row_limit=100)
-        
+
         self.llm = llm
         self.token_tracker = TokenTracker()
         self.cancel_event = cancel_event
@@ -70,11 +71,13 @@ class BaseAgent(ABC):
         """Async LLM call with cancellation support. Returns content string."""
         await self.check_cancelled_async()
         response = await self.llm.complete_async(messages, temperature, timeout)
-        self.token_tracker.add({
-            "prompt_tokens": response.prompt_tokens,
-            "completion_tokens": response.completion_tokens,
-            "total_tokens": response.total_tokens,
-        })
+        self.token_tracker.add(
+            {
+                "prompt_tokens": response.prompt_tokens,
+                "completion_tokens": response.completion_tokens,
+                "total_tokens": response.total_tokens,
+            }
+        )
         return response.content
 
     def _call_llm_with_usage(
@@ -83,11 +86,13 @@ class BaseAgent(ABC):
         """Sync LLM call with usage tracking. Returns content string."""
         self.check_cancelled()
         response = self.llm.complete(messages, temperature, timeout)
-        self.token_tracker.add({
-            "prompt_tokens": response.prompt_tokens,
-            "completion_tokens": response.completion_tokens,
-            "total_tokens": response.total_tokens,
-        })
+        self.token_tracker.add(
+            {
+                "prompt_tokens": response.prompt_tokens,
+                "completion_tokens": response.completion_tokens,
+                "total_tokens": response.total_tokens,
+            }
+        )
         return response.content
 
     def _stream_final_response(
@@ -111,12 +116,18 @@ class BaseAgent(ABC):
                     )
             elif result["type"] == "image":
                 if self.chat_settings.zero_leaks_mode is True:
-                    summary_parts.append(f"Step {i}: Created a visualization. Details REDACTED (Zero Leaks Mode).")
+                    summary_parts.append(
+                        f"Step {i}: Created a visualization. Details REDACTED (Zero Leaks Mode)."
+                    )
                 else:
-                    summary_parts.append(f"Step {i}: Created visualization - {result.get('description', '')}")
+                    summary_parts.append(
+                        f"Step {i}: Created visualization - {result.get('description', '')}"
+                    )
             elif result["type"] == "text":
                 if self.chat_settings.zero_leaks_mode is True:
-                    summary_parts.append(f"Step {i}: Text result REDACTED (Zero Leaks Mode).")
+                    summary_parts.append(
+                        f"Step {i}: Text result REDACTED (Zero Leaks Mode)."
+                    )
                 else:
                     summary_parts.append(f"Step {i}: {result['data'][:100]}")
             elif result["type"] == "error":
@@ -194,6 +205,8 @@ class BaseAgent(ABC):
         return json.dumps(data)
 
     @abstractmethod
-    async def answer(self, user_query: str, history_str: str = "") -> AsyncGenerator[str, None]:
+    async def answer(
+        self, user_query: str, history_str: str = ""
+    ) -> AsyncGenerator[str, None]:
         """Main method to answer user queries."""
         pass

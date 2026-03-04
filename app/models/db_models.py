@@ -236,5 +236,6 @@ class ChatSettings(Base):
 
     zero_leaks_mode = Column(Boolean, server_default=text("false"))
     max_row_limit = Column(Integer, server_default=text("100"))
+    custom_prompt = Column(Text, nullable=True)
 
     chat = relationship("Chat", back_populates="settings")

@@ -26,15 +26,21 @@ class ILanguageModel(ABC):
     """Interface for LLM operations."""
 
     @abstractmethod
-    def complete(self, messages: list[dict], temperature: float, timeout: int) -> LLMResponse:
+    def complete(
+        self, messages: list[dict], temperature: float, timeout: int
+    ) -> LLMResponse:
         pass
 
     @abstractmethod
-    async def complete_async(self, messages: list[dict], temperature: float, timeout: int) -> LLMResponse:
+    async def complete_async(
+        self, messages: list[dict], temperature: float, timeout: int
+    ) -> LLMResponse:
         pass
 
     @abstractmethod
-    def stream(self, messages: list[dict], temperature: float, timeout: int) -> AsyncGenerator[str, None]:
+    def stream(
+        self, messages: list[dict], temperature: float, timeout: int
+    ) -> AsyncGenerator[str, None]:
         pass
 
 

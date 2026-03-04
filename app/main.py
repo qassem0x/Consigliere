@@ -11,8 +11,7 @@ from app.core.rate_limit import limiter
 from sqlalchemy import create_engine, text
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 cors_origins = get_env("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins.split(",") if cors_origins else ["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=(
+        cors_origins.split(",")
+        if cors_origins
+        else ["http://localhost:5173", "http://localhost:3000"]
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,7 +48,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error. Please try again later."}
+        content={"detail": "Internal server error. Please try again later."},
     )
 
 
@@ -57,6 +60,7 @@ def check_health():
 @app.get("/db-health")
 def test_db_connection():
     from app.core.config import DATABASE_URL
+
     try:
         engine = create_engine(DATABASE_URL)
 

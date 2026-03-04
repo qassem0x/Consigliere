@@ -18,12 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExcelAgent(BaseAgent):
-    """Excel data analysis agent with modular architecture.
-    
-    Supports two calling conventions:
-    - New: ExcelAgent(llm=llm, file_path="data.parquet")
-    - Old compatible: ExcelAgent("data.parquet", chat_settings=chat_settings)
-    """
+    """Excel data analysis agent with modular architecture."""
 
     def __init__(
         self,
@@ -40,15 +35,16 @@ class ExcelAgent(BaseAgent):
             # Old API: first arg is file_path
             file_path = llm
             llm = None
-        
+
         if file_path is None:
             raise ValueError("file_path is required")
-        
+
         # Auto-create LLM if not provided (for backward compatibility)
         if llm is None:
             from app.agents.llm import LiteLLMAdapter
+
             llm = LiteLLMAdapter()
-        
+
         super().__init__(llm, chat_settings, cancel_event)
 
         self.file_path = file_path
@@ -70,18 +66,30 @@ class ExcelAgent(BaseAgent):
     def executor(self) -> PythonSandboxExecutor:
         if self._executor is None:
             self._executor = PythonSandboxExecutor(
-                max_row_limit=self.chat_settings.max_row_limit if self.chat_settings else 100,
-                plots_dir="static/plots"
+                max_row_limit=(
+                    self.chat_settings.max_row_limit if self.chat_settings else 100
+                ),
+                plots_dir="static/plots",
             )
         return self._executor
 
     def _infer_schema(self) -> str:
         """Infer schema from dataframe."""
+        schema_cache_key = f"{self.file_path}:schema"
+
+        cached_schema = self.cache.get(schema_cache_key)
+        if cached_schema is not None:
+            logger.info(f"Using cached schema for {self.file_path}")
+            return cached_schema
+
         if self._schema_inference is not None:
-            return self._schema_inference(self.df)
-        
-        inference_engine = ExcelInferenceEngine(self.df)
-        return inference_engine.infer()
+            schema = self._schema_inference(self.df)
+        else:
+            inference_engine = ExcelInferenceEngine(self.df)
+            schema = inference_engine.infer()
+
+        self.cache.set(schema_cache_key, schema)
+        return schema
 
     def _load_data(self, file_path: str) -> Optional[pd.DataFrame]:
         """Load data from file or cache."""
@@ -111,8 +119,14 @@ class ExcelAgent(BaseAgent):
             logger.error(f"Failed to load data: {e}")
             return None
 
-    async def _consult_brain(self, user_query: str, history_str: str = "") -> Dict[str, Any]:
+    async def _consult_brain(
+        self, user_query: str, history_str: str = ""
+    ) -> Dict[str, Any]:
         """Consult the planning brain to generate analysis plan."""
+        custom_prompt = ""
+        if self.chat_settings and self.chat_settings.custom_prompt:
+            custom_prompt = f"\n\nAdditional Instructions:\n{self.chat_settings.custom_prompt}"
+        
         messages = [
             {
                 "role": "system",
@@ -120,15 +134,20 @@ class ExcelAgent(BaseAgent):
                     schema=self.schema,
                     history=history_str if history_str else "No previous conversation.",
                     query=user_query,
+                    custom_prompt=custom_prompt,
                 ),
             }
         ]
 
         try:
-            response = await self._call_llm_with_usage_async(messages, temperature=0.1, timeout=60)
+            response = await self._call_llm_with_usage_async(
+                messages, temperature=0.1, timeout=60
+            )
 
             if "```" in response:
-                response_content = response.replace("```json", "").replace("```", "").strip()
+                response_content = (
+                    response.replace("```json", "").replace("```", "").strip()
+                )
             else:
                 response_content = response.strip()
 
@@ -175,17 +194,23 @@ class ExcelAgent(BaseAgent):
                     )
                 else:
                     prev_summary.append(
-                        f"Step {i}: Returned table with {res.get('total_rows', 0)} rows, Data Sample: {res.get('data', [])[:5]}"
+                        f"Step {i}: Returned table with {res.get('total_rows', 0)} rows, Data Sample (first 5 rows): {res.get('data', [])[:5]}"
                     )
             elif res["type"] == "image":
-                prev_summary.append(f"Step {i}: Created chart - {res.get('description', '')}")
+                prev_summary.append(
+                    f"Step {i}: Created chart - {res.get('description', '')}"
+                )
             elif res["type"] == "text":
                 if self.chat_settings.zero_leaks_mode is True:
-                    prev_summary.append(f"Step {i}: Text result REDACTED (Zero Leaks Mode).")
+                    prev_summary.append(
+                        f"Step {i}: Text result REDACTED (Zero Leaks Mode)."
+                    )
                 else:
                     prev_summary.append(f"Step {i}: {res['data'][:100]}")
 
-        prev_context = "\n".join(prev_summary) if prev_summary else "This is the first step."
+        prev_context = (
+            "\n".join(prev_summary) if prev_summary else "This is the first step."
+        )
 
         step_desc = step.get("title", step.get("description", ""))
         if step.get("chart_type") and step["chart_type"] != "none":
@@ -206,7 +231,9 @@ class ExcelAgent(BaseAgent):
         ]
 
         try:
-            response = await self._call_llm_with_usage_async(messages, temperature=0.0, timeout=60)
+            response = await self._call_llm_with_usage_async(
+                messages, temperature=0.0, timeout=60
+            )
             return response
         except Exception as e:
             logger.error(f"Step code generation failed: {e}")
@@ -233,13 +260,17 @@ class ExcelAgent(BaseAgent):
             }
         ]
         try:
-            response = await self._call_llm_with_usage_async(messages, temperature=0.1, timeout=60)
+            response = await self._call_llm_with_usage_async(
+                messages, temperature=0.1, timeout=60
+            )
             return response
         except Exception as e:
             logger.error(f"Fix code generation failed: {e}")
             return bad_code
 
-    async def _generate_chat_response(self, user_query: str, history_str: str = "") -> str:
+    async def _generate_chat_response(
+        self, user_query: str, history_str: str = ""
+    ) -> str:
         """Generate a conversational response for general chat queries."""
         messages = [
             {
@@ -258,7 +289,9 @@ Do NOT mention schema, columns, or technical details.""",
         messages.append({"role": "user", "content": user_query})
 
         try:
-            response = await self._call_llm_with_usage_async(messages, temperature=0.7, timeout=30)
+            response = await self._call_llm_with_usage_async(
+                messages, temperature=0.7, timeout=30
+            )
             return response.strip()
         except Exception as e:
             logger.error(f"Chat response error: {e}")
@@ -282,78 +315,124 @@ Do NOT mention schema, columns, or technical details.""",
             row_count = sheet.get("row_count", 0)
             sheet_data = []
 
-            if "column" in user_query_lower or "structure" in user_query_lower or "schema" in user_query_lower:
+            if (
+                "column" in user_query_lower
+                or "structure" in user_query_lower
+                or "schema" in user_query_lower
+            ):
                 for col in columns:
-                    sheet_data.append({
-                        "Column": col.get("name", ""),
-                        "Type": col.get("type", "unknown"),
-                        "Role": col.get("role", "unknown"),
-                    })
+                    sheet_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Type": col.get("type", "unknown"),
+                            "Role": col.get("role", "unknown"),
+                        }
+                    )
             elif "null" in user_query_lower:
                 for col in columns:
                     profile = col.get("profile", {})
                     null_ratio = profile.get("null_ratio", 0)
-                    sheet_data.append({
-                        "Column": col.get("name", ""),
-                        "Null Count": int(row_count * null_ratio) if null_ratio > 0 else 0,
-                        "Null Ratio": f"{null_ratio * 100:.1f}%",
-                    })
+                    sheet_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Null Count": (
+                                int(row_count * null_ratio) if null_ratio > 0 else 0
+                            ),
+                            "Null Ratio": f"{null_ratio * 100:.1f}%",
+                        }
+                    )
             elif "distinct" in user_query_lower or "unique" in user_query_lower:
                 for col in columns:
                     profile = col.get("profile", {})
-                    sheet_data.append({
-                        "Column": col.get("name", ""),
-                        "Distinct Values": profile.get("distinct_count", 0),
-                    })
-            elif "row" in user_query_lower or "count" in user_query_lower or "size" in user_query_lower:
-                sheet_data.append({"Row Count": row_count, "Column Count": len(columns)})
-            elif "numeric" in user_query_lower or "number" in user_query_lower or "measure" in user_query_lower:
+                    sheet_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Distinct Values": profile.get("distinct_count", 0),
+                        }
+                    )
+            elif (
+                "row" in user_query_lower
+                or "count" in user_query_lower
+                or "size" in user_query_lower
+            ):
+                sheet_data.append(
+                    {"Row Count": row_count, "Column Count": len(columns)}
+                )
+            elif (
+                "numeric" in user_query_lower
+                or "number" in user_query_lower
+                or "measure" in user_query_lower
+            ):
                 for col in columns:
                     col_type = col.get("type", "")
                     if "int" in col_type or "float" in col_type:
                         profile = col.get("profile", {})
-                        sheet_data.append({
-                            "Column": col.get("name", ""),
-                            "Type": col_type,
-                            "Min": profile.get("min", "N/A"),
-                            "Max": profile.get("max", "N/A"),
-                            "Mean": f"{profile.get('mean', 0):.2f}" if profile.get("mean") else "N/A",
-                        })
-            elif "string" in user_query_lower or "text" in user_query_lower or "category" in user_query_lower:
+                        sheet_data.append(
+                            {
+                                "Column": col.get("name", ""),
+                                "Type": col_type,
+                                "Min": profile.get("min", "N/A"),
+                                "Max": profile.get("max", "N/A"),
+                                "Mean": (
+                                    f"{profile.get('mean', 0):.2f}"
+                                    if profile.get("mean")
+                                    else "N/A"
+                                ),
+                            }
+                        )
+            elif (
+                "string" in user_query_lower
+                or "text" in user_query_lower
+                or "category" in user_query_lower
+            ):
                 for col in columns:
                     col_type = col.get("type", "")
                     if "str" in col_type or "object" in col_type:
                         profile = col.get("profile", {})
-                        sheet_data.append({
-                            "Column": col.get("name", ""),
-                            "Type": col_type,
-                            "Distinct": profile.get("distinct_count", 0),
-                        })
+                        sheet_data.append(
+                            {
+                                "Column": col.get("name", ""),
+                                "Type": col_type,
+                                "Distinct": profile.get("distinct_count", 0),
+                            }
+                        )
             else:
                 for col in columns:
                     profile = col.get("profile", {})
-                    sheet_data.append({
-                        "Column": col.get("name", ""),
-                        "Type": col.get("type", "unknown"),
-                        "Null %": f"{profile.get('null_ratio', 0) * 100:.1f}%",
-                        "Distinct": profile.get("distinct_count", "N/A"),
-                    })
+                    sheet_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Type": col.get("type", "unknown"),
+                            "Null %": f"{profile.get('null_ratio', 0) * 100:.1f}%",
+                            "Distinct": profile.get("distinct_count", "N/A"),
+                        }
+                    )
 
             if sheet_data:
                 df_sheet = pd.DataFrame(sheet_data)
-                all_results.append({
-                    "type": "table",
-                    "table_name": sheet_name,
-                    "data": df_sheet.fillna("").to_dict(orient="records"),
-                    "columns": list(df_sheet.columns),
-                    "total_rows": len(df_sheet),
-                    "description": f"Schema for {sheet_name}",
-                })
+                all_results.append(
+                    {
+                        "type": "table",
+                        "table_name": sheet_name,
+                        "data": df_sheet.fillna("").to_dict(orient="records"),
+                        "columns": list(df_sheet.columns),
+                        "total_rows": len(df_sheet),
+                        "description": f"Schema for {sheet_name}",
+                    }
+                )
 
         if all_results:
-            return {"type": "metadata", "tables": all_results, "description": "Data schema information"}
+            return {
+                "type": "metadata",
+                "tables": all_results,
+                "description": "Data schema information",
+            }
         else:
-            return {"type": "text", "data": self.schema, "description": "Data schema information"}
+            return {
+                "type": "text",
+                "data": self.schema,
+                "description": "Data schema information",
+            }
 
     def _calculate_stats(self) -> str:
         """Run tactical scan of dataframe to extract key metrics."""
@@ -364,13 +443,17 @@ Do NOT mention schema, columns, or technical details.""",
         try:
             dup_count = self.df.duplicated().sum()
             if dup_count > 0:
-                stats.append(f"Duplicate Rows: {dup_count:,} ({dup_count / len(self.df) * 100:.1f}%)")
+                stats.append(
+                    f"Duplicate Rows: {dup_count:,} ({dup_count / len(self.df) * 100:.1f}%)"
+                )
         except Exception:
             pass
 
         try:
             null_counts = self.df.isnull().sum()
-            null_cols = null_counts[null_counts > 0].sort_values(ascending=False).head(5)
+            null_cols = (
+                null_counts[null_counts > 0].sort_values(ascending=False).head(5)
+            )
             for col, count in null_cols.items():
                 ratio = count / len(self.df) * 100
                 stats.append(f"Nulls in '{col}': {count:,} ({ratio:.1f}%)")
@@ -390,7 +473,9 @@ Do NOT mention schema, columns, or technical details.""",
                 unique_count = self.df[col].nunique()
                 if unique_count < 50 and unique_count > 0:
                     if self.chat_settings.zero_leaks_mode is True:
-                        stats.append(f"Distinct values in '{col}': {unique_count} (values REDACTED - Zero Leaks Mode)")
+                        stats.append(
+                            f"Distinct values in '{col}': {unique_count} (values REDACTED - Zero Leaks Mode)"
+                        )
                     else:
                         top_3 = self.df[col].value_counts().head(3)
                         top_list = [f"{val} ({count})" for val, count in top_3.items()]
@@ -433,16 +518,25 @@ Do NOT mention schema, columns, or technical details.""",
         ]
 
         try:
-            response = await self._call_llm_with_usage_async(messages, temperature=0.4, timeout=60)
+            response = await self._call_llm_with_usage_async(
+                messages, temperature=0.4, timeout=60
+            )
             response_text = response
 
             if "```" in response_text:
-                response_text = response_text.replace("```json", "").replace("```", "").strip()
+                response_text = (
+                    response_text.replace("```json", "").replace("```", "").strip()
+                )
 
             parsed_json = json_repair.loads(response_text)
 
             if isinstance(parsed_json, dict):
-                required_fields = ["briefing", "key_entities", "data_alerts", "recommended_actions"]
+                required_fields = [
+                    "briefing",
+                    "key_entities",
+                    "data_alerts",
+                    "recommended_actions",
+                ]
                 for field in required_fields:
                     if field not in parsed_json:
                         parsed_json[field] = [] if field != "briefing" else "Unknown"
@@ -459,13 +553,17 @@ Do NOT mention schema, columns, or technical details.""",
                 "recommended_actions": ["Show me the data", "Count rows"],
             }
 
-    async def answer(self, user_query: str, history_str: str = "") -> AsyncGenerator[str, None]:
+    async def answer(
+        self, user_query: str, history_str: str = ""
+    ) -> AsyncGenerator[str, None]:
         """Main method to answer user queries."""
-        yield json.dumps({
-            "type": "step_start",
-            "step_number": 0,
-            "description": "Analyzing request and planning...",
-        })
+        yield json.dumps(
+            {
+                "type": "step_start",
+                "step_number": 0,
+                "description": "Analyzing request and planning...",
+            }
+        )
 
         brain_output = await self._consult_brain(user_query, history_str)
         intent = brain_output.get("intent", "DATA_ACTION")
@@ -473,38 +571,44 @@ Do NOT mention schema, columns, or technical details.""",
 
         if intent == "GENERAL_CHAT":
             chat_response = await self._generate_chat_response(user_query, history_str)
-            yield json.dumps({
-                "type": "final_result",
-                "data": {
-                    "text": chat_response,
-                    "steps": [],
-                    "code": None,
-                },
-            })
+            yield json.dumps(
+                {
+                    "type": "final_result",
+                    "data": {
+                        "text": chat_response,
+                        "steps": [],
+                        "code": None,
+                    },
+                }
+            )
             return
 
         if intent == "OFFENSIVE":
-            yield json.dumps({
-                "type": "final_result",
-                "data": {
-                    "text": "I'm here to help with professional data analysis. Let's keep it focused on the data.",
-                    "steps": [],
-                    "code": None,
-                },
-            })
+            yield json.dumps(
+                {
+                    "type": "final_result",
+                    "data": {
+                        "text": "I'm here to help with professional data analysis. Let's keep it focused on the data.",
+                        "steps": [],
+                        "code": None,
+                    },
+                }
+            )
             return
 
         plan_steps = brain_output.get("plan", [])
 
         if not plan_steps:
-            yield json.dumps({
-                "type": "final_result",
-                "data": {
-                    "text": "I understood your request but couldn't generate a valid execution plan. Could you try asking in a different way?",
-                    "steps": [],
-                    "code": None,
-                },
-            })
+            yield json.dumps(
+                {
+                    "type": "final_result",
+                    "data": {
+                        "text": "I understood your request but couldn't generate a valid execution plan. Could you try asking in a different way?",
+                        "steps": [],
+                        "code": None,
+                    },
+                }
+            )
             return
 
         all_results = []
@@ -532,7 +636,9 @@ Do NOT mention schema, columns, or technical details.""",
                 yield json.dumps({"type": "step_result", "data": metadata_result})
                 continue
 
-            raw_code = await self._generate_step_code(enhanced_prompt, step, all_results)
+            raw_code = await self._generate_step_code(
+                enhanced_prompt, step, all_results
+            )
 
             max_code_retries = 3
             exec_result = None
@@ -545,11 +651,15 @@ Do NOT mention schema, columns, or technical details.""",
                     all_code.append(clean_code)
                 except Exception as sec_err:
                     sec_error_msg = str(sec_err)
-                    logger.error(f"Step {step['step_number']} security violation: {sec_error_msg}")
+                    logger.error(
+                        f"Step {step['step_number']} security violation: {sec_error_msg}"
+                    )
                     last_error = f"Security Error: {sec_error_msg}"
 
                     if code_attempt < max_code_retries - 1:
-                        current_raw_code = await self._fix_step_code(current_raw_code, last_error, step)
+                        current_raw_code = await self._fix_step_code(
+                            current_raw_code, last_error, step
+                        )
                         continue
                     else:
                         exec_result = {
@@ -561,10 +671,13 @@ Do NOT mention schema, columns, or technical details.""",
 
                 if exec_result is None:
                     from app.core.utils import make_json_safe
+
                     candidate = await self.executor.execute(clean_code, {"df": self.df})
                     candidate = make_json_safe(candidate)
                     candidate["step_number"] = step["step_number"]
-                    candidate["step_description"] = step.get("title", step.get("description", ""))
+                    candidate["step_description"] = step.get(
+                        "title", step.get("description", "")
+                    )
                     candidate["step_type"] = step["type"]
                     if step.get("detailed_description") and step["type"] != "summary":
                         candidate["detailed_description"] = step["detailed_description"]
@@ -574,10 +687,14 @@ Do NOT mention schema, columns, or technical details.""",
                         break
 
                     last_error = candidate["data"]
-                    logger.warning(f"Step {step['step_number']} execution error: {last_error}")
+                    logger.warning(
+                        f"Step {step['step_number']} execution error: {last_error}"
+                    )
 
                     if code_attempt < max_code_retries - 1:
-                        current_raw_code = await self._fix_step_code(clean_code, last_error, step)
+                        current_raw_code = await self._fix_step_code(
+                            clean_code, last_error, step
+                        )
 
             if exec_result is None:
                 exec_result = {
@@ -594,11 +711,13 @@ Do NOT mention schema, columns, or technical details.""",
         accumulated_text = ""
         for token in self._stream_final_response(enhanced_prompt, all_results):
             accumulated_text += token
-            yield json.dumps({
-                "type": "token",
-                "data": token,
-                "is_final": False,
-            })
+            yield json.dumps(
+                {
+                    "type": "token",
+                    "data": token,
+                    "is_final": False,
+                }
+            )
 
         code_log = ""
         for i, step in enumerate(plan_steps):
@@ -608,17 +727,19 @@ Do NOT mention schema, columns, or technical details.""",
             code_log += "=" * 50 + "\n\n"
 
         token_usage = self.token_tracker.to_dict()
-        yield json.dumps({
-            "type": "final_result",
-            "data": {
-                "text": accumulated_text,
-                "steps": all_results,
-                "plan": brain_output,
-                "code": code_log,
-                "token_usage": {
-                    "prompt_tokens": token_usage.get("prompt_tokens", 0),
-                    "completion_tokens": token_usage.get("completion_tokens", 0),
-                    "total_tokens": token_usage.get("total_tokens", 0),
+        yield json.dumps(
+            {
+                "type": "final_result",
+                "data": {
+                    "text": accumulated_text,
+                    "steps": all_results,
+                    "plan": brain_output,
+                    "code": code_log,
+                    "token_usage": {
+                        "prompt_tokens": token_usage.get("prompt_tokens", 0),
+                        "completion_tokens": token_usage.get("completion_tokens", 0),
+                        "total_tokens": token_usage.get("total_tokens", 0),
+                    },
                 },
-            },
-        })
+            }
+        )

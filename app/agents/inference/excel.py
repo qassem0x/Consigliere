@@ -114,9 +114,12 @@ class ExcelInferenceEngine:
         dimension_count = sum(
             1
             for col in column_models
-            if col["role"] in ("dimension_categorical", "dimension_numeric", "text_content")
+            if col["role"]
+            in ("dimension_categorical", "dimension_numeric", "text_content")
         )
-        identifier_count = sum(1 for col in column_models if col["role"] == "identifier")
+        identifier_count = sum(
+            1 for col in column_models if col["role"] == "identifier"
+        )
 
         if measure_count > 0 and dimension_count > 0:
             return "data_table"

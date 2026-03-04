@@ -184,11 +184,13 @@ def update_chat_settings(
             chat_id=chat.id,
             zero_leaks_mode=settings.zero_leaks_mode,
             max_row_limit=settings.max_row_limit,
+            custom_prompt=settings.custom_prompt,
         )
         db.add(new_settings)
     else:
         chat.settings.zero_leaks_mode = settings.zero_leaks_mode
         chat.settings.max_row_limit = settings.max_row_limit
+        chat.settings.custom_prompt = settings.custom_prompt
         db.add(chat.settings)
 
     db.commit()
@@ -197,4 +199,5 @@ def update_chat_settings(
     return {
         "zero_leaks_mode": chat.settings.zero_leaks_mode,
         "max_row_limit": chat.settings.max_row_limit,
+        "custom_prompt": chat.settings.custom_prompt,
     }

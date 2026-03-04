@@ -3,13 +3,14 @@ import { ChatType } from '../../types';
 import { formatTimeAgo } from '../../utils/utils';
 import { FileSpreadsheet, Database, Trash2, MoreHorizontal, Shield, Settings } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { ChatSettingsModal } from './ChatSettingsModal';
 
 interface SidebarItemProps {
     item: ChatType;
     isActive: boolean;
     onLoadChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
-    onUpdateSettings?: (chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number }) => void;
+    onUpdateSettings?: (chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number; custom_prompt?: string }) => void;
 }
 
 export const SidebarItem: React.FC<SidebarItemProps> = ({ item, isActive, onLoadChat, onDeleteChat, onUpdateSettings }) => {
@@ -17,7 +18,8 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({ item, isActive, onLoad
     const settingsRef = useRef<HTMLDivElement>(null);
     const [localSettings, setLocalSettings] = useState({
         zero_leaks_mode: item.settings?.zero_leaks_mode ?? false,
-        max_row_limit: item.settings?.max_row_limit ?? 100
+        max_row_limit: item.settings?.max_row_limit ?? 100,
+        custom_prompt: item.settings?.custom_prompt ?? ''
     });
 
     useEffect(() => {
@@ -48,13 +50,6 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({ item, isActive, onLoad
             max_row_limit: item.settings?.max_row_limit ?? 100
         });
         setShowSettings(!showSettings);
-    };
-
-    const handleSaveSettings = () => {
-        if (onUpdateSettings) {
-            onUpdateSettings(item.id, localSettings);
-        }
-        setShowSettings(false);
     };
 
     return (
@@ -97,56 +92,15 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({ item, isActive, onLoad
             </button>
 
             {showSettings && (
-                <div className="absolute right-0 top-full mt-1 z-[100] w-64 bg-[#1a1a1e] border border-white/10 rounded-lg shadow-xl p-3">
-                    <div className="flex items-center gap-2 mb-3">
-                        <Shield size={14} className="text-primary" />
-                        <span className="text-xs font-medium text-white">Chat Settings</span>
-                    </div>
-                    <div className="space-y-3">
-                        <div>
-                            <label className="text-[10px] text-slate-400 mb-1.5 block">Max Row Limit</label>
-                            <input
-                                type="number"
-                                min="1"
-                                max="100000"
-                                value={localSettings.max_row_limit}
-                                onChange={(e) => setLocalSettings({...localSettings, max_row_limit: parseInt(e.target.value) || 100})}
-                                className="w-full px-2 py-1.5 bg-white/5 border border-white/10 rounded text-white text-xs focus:outline-none focus:border-primary"
-                            />
-                        </div>
-                        <div className="flex items-center justify-between p-2 rounded-lg bg-white/[0.02] border border-white/5">
-                            <div className="flex items-center gap-2">
-                                <Shield size={12} className="text-slate-400" />
-                                <span className="text-xs text-slate-300">Zero Leaks</span>
-                            </div>
-                            <label className="cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={localSettings.zero_leaks_mode}
-                                    onChange={(e) => setLocalSettings({...localSettings, zero_leaks_mode: e.target.checked})}
-                                    className="sr-only peer"
-                                />
-                                <div className="relative w-8 h-4 bg-white/10 rounded-full peer peer-checked:bg-primary transition-colors">
-                                    <div className="absolute left-0.5 top-0.5 w-3 h-3 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
-                                </div>
-                            </label>
-                        </div>
-                        <div className="flex gap-2 pt-2 border-t border-white/5">
-                            <button
-                                onClick={() => setShowSettings(false)}
-                                className="flex-1 px-2 py-1.5 rounded text-xs border border-white/10 text-slate-300 hover:bg-white/5"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleSaveSettings}
-                                className="flex-1 px-2 py-1.5 rounded text-xs bg-primary text-white hover:bg-primary/90"
-                            >
-                                Save
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <ChatSettingsModal
+                    isOpen={showSettings}
+                    onClose={() => setShowSettings(false)}
+                    settings={localSettings}
+                    onSave={(newSettings) => {
+                        setLocalSettings(newSettings);
+                        onUpdateSettings?.(item.id, newSettings);
+                    }}
+                />
             )}
         </div>
     );

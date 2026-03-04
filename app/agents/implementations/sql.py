@@ -14,8 +14,13 @@ from app.agents.interfaces import ILanguageModel
 from app.agents.cache.manager import SQLCacheManager
 from app.agents.inference import SemanticInferenceEngine
 from app.agents.prompts import (
-    SQL_GENERATOR_PROMPT, STRICT_SQL_RULES, SQL_FIX_PROMPT,
-    EMPTY_RESULT_SQL_PROMPT, CHART_FIX_PROMPT, CHART_GENERATOR_PROMPT, SQL_BRAIN_PROMPT,
+    SQL_GENERATOR_PROMPT,
+    STRICT_SQL_RULES,
+    SQL_FIX_PROMPT,
+    EMPTY_RESULT_SQL_PROMPT,
+    CHART_FIX_PROMPT,
+    CHART_GENERATOR_PROMPT,
+    SQL_BRAIN_PROMPT,
 )
 from app.models.db_models import ChatSettings
 
@@ -45,6 +50,7 @@ class SQLAgent(BaseAgent):
         # Auto-create LLM if not provided
         if llm is None:
             from app.agents.llm import LiteLLMAdapter
+
             llm = LiteLLMAdapter()
 
         super().__init__(llm, chat_settings, cancel_event)
@@ -62,7 +68,9 @@ class SQLAgent(BaseAgent):
         if self._executor is None:
             self._executor = SQLExecutor(
                 connection_string=self.connection_string,
-                max_row_limit=self.chat_settings.max_row_limit if self.chat_settings else 100,
+                max_row_limit=(
+                    self.chat_settings.max_row_limit if self.chat_settings else 100
+                ),
                 plots_dir="static/plots",
                 max_retries=self.max_retries,
             )
@@ -72,7 +80,7 @@ class SQLAgent(BaseAgent):
     def cache(self) -> SQLCacheManager:
         """Use singleton SQLCacheManager for SQL caching."""
         return SQLCacheManager()
-    
+
     @property
     def _sql_executor(self) -> SQLExecutor:
         """Get or create SQLExecutor with cached engine."""
@@ -81,7 +89,9 @@ class SQLAgent(BaseAgent):
             engine = self.cache.get_engine(self.connection_string)
             self._executor = SQLExecutor(
                 engine=engine,  # Pass pre-created engine
-                max_row_limit=self.chat_settings.max_row_limit if self.chat_settings else 100,
+                max_row_limit=(
+                    self.chat_settings.max_row_limit if self.chat_settings else 100
+                ),
                 plots_dir="static/plots",
                 max_retries=self.max_retries,
             )
@@ -91,7 +101,7 @@ class SQLAgent(BaseAgent):
         """Infer database schema."""
         if self._schema_inference is not None:
             return self._schema_inference(self._sql_executor.engine)
-        
+
         semantic_engine = SemanticInferenceEngine(self._sql_executor.engine)
         return semantic_engine.infer()
 
@@ -102,11 +112,11 @@ class SQLAgent(BaseAgent):
         cached = self.cache.get_schema(self.connection_string)
         if cached:
             return cached
-        
+
         schema = self._infer_schema()
         self.cache.set_schema(self.connection_string, schema)
         return schema
-    
+
     @property
     def executor(self) -> SQLExecutor:
         """Get SQLExecutor (backward compatibility)."""
@@ -163,7 +173,11 @@ class SQLAgent(BaseAgent):
             "columns": list(df.columns),
             "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
             "shape": df.shape,
-            "sample": [] if self.chat_settings.zero_leaks_mode else df.head(3).to_dict(orient="records"),
+            "sample": (
+                []
+                if self.chat_settings.zero_leaks_mode
+                else df.head(3).to_dict(orient="records")
+            ),
         }
         messages = [
             {
@@ -176,9 +190,13 @@ class SQLAgent(BaseAgent):
             }
         ]
         response = self._call_llm_with_usage(messages, temperature=0.1)
-        return re.sub(r"```(?:python|py)?\n?(.*?)\n?```", r"\1", response, flags=re.DOTALL).strip()
+        return re.sub(
+            r"```(?:python|py)?\n?(.*?)\n?```", r"\1", response, flags=re.DOTALL
+        ).strip()
 
-    def _generate_chart_code(self, step: Dict[str, Any], df: pd.DataFrame, user_query: str) -> str:
+    def _generate_chart_code(
+        self, step: Dict[str, Any], df: pd.DataFrame, user_query: str
+    ) -> str:
         """Generate Python code for creating a chart."""
         chart_type = step.get("chart_type", "bar")
 
@@ -212,25 +230,36 @@ class SQLAgent(BaseAgent):
             logger.error(f"Chart code generation failed: {e}")
             return None
 
-    async def _consult_brain(self, user_query: str, history_str: str = "") -> Dict[str, Any]:
+    async def _consult_brain(
+        self, user_query: str, history_str: str = ""
+    ) -> Dict[str, Any]:
         """Consult the planning brain to generate analysis plan."""
         from app.agents.prompts.sql import SQL_BRAIN_PROMPT
 
         await self.check_cancelled_async()
 
         history_content = history_str if history_str else "No previous conversation."
+
+        custom_prompt = ""
+        if self.chat_settings and self.chat_settings.custom_prompt:
+            custom_prompt = (
+                f"\n\nAdditional Instructions:\n{self.chat_settings.custom_prompt}"
+            )
+
         brain_content = (
-            SQL_BRAIN_PROMPT
-            .replace("{schema}", self.schema)
+            SQL_BRAIN_PROMPT.replace("{schema}", self.schema)
             .replace("{history}", history_content)
             .replace("{user_query}", user_query)
+            .replace("{custom_prompt}", custom_prompt)
         )
         messages = [{"role": "system", "content": brain_content}]
 
         try:
-            response = await self._call_llm_with_usage_async(messages, temperature=0.1, timeout=60)
+            response = await self._call_llm_with_usage_async(
+                messages, temperature=0.1, timeout=60
+            )
             logger.info(f"RAW BRAIN RESPONSE:\n{response}")
-            
+
             if "```" in response:
                 response = response.replace("```json", "").replace("```", "").strip()
 
@@ -252,14 +281,20 @@ class SQLAgent(BaseAgent):
             elif not isinstance(brain_output, dict):
                 brain_output = {"intent": "DATA_ACTION", "plan": []}
 
-            if "enhanced_query" in brain_output and "enhanced_prompt" not in brain_output:
+            if (
+                "enhanced_query" in brain_output
+                and "enhanced_prompt" not in brain_output
+            ):
                 brain_output["enhanced_prompt"] = brain_output["enhanced_query"]
 
             if "intent" not in brain_output:
                 brain_output["intent"] = "DATA_ACTION"
                 brain_output["enhanced_prompt"] = user_query
 
-            if brain_output.get("intent") in ("DATA_ACTION", "METADATA") and not brain_output.get("plan"):
+            if brain_output.get("intent") in (
+                "DATA_ACTION",
+                "METADATA",
+            ) and not brain_output.get("plan"):
                 brain_output["plan"] = [
                     {
                         "step_number": 1,
@@ -288,7 +323,9 @@ class SQLAgent(BaseAgent):
                 ],
             }
 
-    async def _execute_sql_step(self, step: Dict[str, Any], all_sqls: List[str]) -> Dict[str, Any]:
+    async def _execute_sql_step(
+        self, step: Dict[str, Any], all_sqls: List[str]
+    ) -> Dict[str, Any]:
         """Execute a SQL-based step with error-driven self-correction."""
         current_query = step.get("title", step.get("description", ""))
         sql_query = self._generate_sql(current_query)
@@ -307,12 +344,31 @@ class SQLAgent(BaseAgent):
                 }
 
             try:
-                result = await self.executor.execute(sql_query)
-                if result["type"] == "error":
-                    raise Exception(result["data"])
-                df = pd.DataFrame(result["data"]) if result.get("data") else pd.DataFrame()
+                cached_df = self.cache.get_query_result(
+                    self.connection_string, sql_query
+                )
+                if cached_df is not None:
+                    df = cached_df
+                    logger.info(
+                        f"Step {step['step_number']}: Using cached query result"
+                    )
+                else:
+                    result = await self.executor.execute(sql_query)
+                    if result["type"] == "error":
+                        raise Exception(result["data"])
+                    df = (
+                        pd.DataFrame(result["data"])
+                        if result.get("data")
+                        else pd.DataFrame()
+                    )
+                    if not df.empty:
+                        self.cache.set_query_result(
+                            self.connection_string, sql_query, df
+                        )
                 current_sql_used = sql_query
-                logger.info(f"Step {step['step_number']}: Query executed, {len(df)} rows")
+                logger.info(
+                    f"Step {step['step_number']}: Query executed, {len(df)} rows"
+                )
                 break
             except Exception as e:
                 last_error = str(e)
@@ -324,10 +380,22 @@ class SQLAgent(BaseAgent):
             wider_sql = self._widen_sql(current_sql_used, current_query)
             if self.executor._sanitize_sql(wider_sql):
                 try:
-                    wider_result = await self.executor.execute(wider_sql)
-                    if wider_result.get("data"):
-                        df = pd.DataFrame(wider_result["data"])
-                        current_sql_used = wider_sql
+                    wider_cached = self.cache.get_query_result(
+                        self.connection_string, wider_sql
+                    )
+                    if wider_cached is not None:
+                        df = wider_cached
+                        logger.info(
+                            f"Step {step['step_number']}: Using cached wider query result"
+                        )
+                    else:
+                        wider_result = await self.executor.execute(wider_sql)
+                        if wider_result.get("data"):
+                            df = pd.DataFrame(wider_result["data"])
+                            self.cache.set_query_result(
+                                self.connection_string, wider_sql, df
+                            )
+                            current_sql_used = wider_sql
                 except Exception:
                     pass
 
@@ -343,7 +411,12 @@ class SQLAgent(BaseAgent):
                 }
             else:
                 df_clean = df.where(pd.notnull(df), None)
-                data_dict = df_clean.head(self.chat_settings.max_row_limit).fillna("").astype(str).to_dict(orient="records")
+                data_dict = (
+                    df_clean.head(self.chat_settings.max_row_limit)
+                    .fillna("")
+                    .astype(str)
+                    .to_dict(orient="records")
+                )
                 exec_result = {
                     "step_number": step["step_number"],
                     "step_description": step["title"],
@@ -364,11 +437,15 @@ class SQLAgent(BaseAgent):
             }
 
         if current_sql_used:
-            all_sqls.append(f"-- Step {step['step_number']}: {step.get('title', '')}\n{current_sql_used}")
+            all_sqls.append(
+                f"-- Step {step['step_number']}: {step.get('title', '')}\n{current_sql_used}"
+            )
 
         return exec_result
 
-    async def _execute_chart_step(self, step: Dict[str, Any], all_sqls: List[str], user_query: str) -> Dict[str, Any]:
+    async def _execute_chart_step(
+        self, step: Dict[str, Any], all_sqls: List[str], user_query: str
+    ) -> Dict[str, Any]:
         """Execute a chart step."""
         current_query = step.get("title", step.get("description", ""))
         sql_query = self._generate_sql(current_query)
@@ -377,31 +454,57 @@ class SQLAgent(BaseAgent):
 
         for attempt in range(self.max_retries):
             if not self.executor._sanitize_sql(sql_query):
-                return {"step_number": step["step_number"], "type": "error", "data": "Security Alert"}
+                return {
+                    "step_number": step["step_number"],
+                    "type": "error",
+                    "data": "Security Alert",
+                }
 
             try:
-                result = await self.executor.execute(sql_query)
-                if result["type"] == "error":
-                    raise Exception(result["data"])
-                if result.get("data"):
-                    df = pd.DataFrame(result["data"])
-                    current_sql_used = sql_query
-                    break
+                cached_df = self.cache.get_query_result(
+                    self.connection_string, sql_query
+                )
+                if cached_df is not None:
+                    df = cached_df
+                    logger.info(
+                        f"Step {step['step_number']}: Using cached chart query result"
+                    )
+                else:
+                    result = await self.executor.execute(sql_query)
+                    if result["type"] == "error":
+                        raise Exception(result["data"])
+                    if result.get("data"):
+                        df = pd.DataFrame(result["data"])
+                        self.cache.set_query_result(
+                            self.connection_string, sql_query, df
+                        )
+                        current_sql_used = sql_query
+                break
             except Exception as e:
                 if attempt < self.max_retries - 1:
                     sql_query = self._fix_sql(sql_query, str(e))
 
         if df is None or df.empty:
-            return {"step_number": step["step_number"], "type": "error", "data": "No data for chart"}
+            return {
+                "step_number": step["step_number"],
+                "type": "error",
+                "data": "No data for chart",
+            }
 
         chart_code = self._generate_chart_code(step, df, user_query)
         if not chart_code:
-            return {"step_number": step["step_number"], "type": "error", "data": "Chart code failed"}
+            return {
+                "step_number": step["step_number"],
+                "type": "error",
+                "data": "Chart code failed",
+            }
 
         chart_result = await self.executor.generate_chart(chart_code, {"df": df})
 
         if current_sql_used:
-            all_sqls.append(f"-- Step {step['step_number']}: {step.get('description', '')}\n{current_sql_used}\n# Chart Code:\n{chart_code}")
+            all_sqls.append(
+                f"-- Step {step['step_number']}: {step.get('description', '')}\n{current_sql_used}\n# Chart Code:\n{chart_code}"
+            )
 
         chart_result["step_number"] = step["step_number"]
         chart_result["step_description"] = step["title"]
@@ -409,14 +512,18 @@ class SQLAgent(BaseAgent):
         chart_result["query"] = current_sql_used
         return chart_result
 
-    def _execute_summary_step(self, step: Dict[str, Any], user_query: str, all_results: List[Dict[str, Any]]) -> str:
+    def _execute_summary_step(
+        self, step: Dict[str, Any], user_query: str, all_results: List[Dict[str, Any]]
+    ) -> str:
         """Execute a summary step."""
         from app.core.prompts import SUMMARY_SYNTHESIS_PROMPT
 
         context_str = ""
         for res in all_results:
             if res["type"] == "table":
-                context_str += f"Step {res['step_number']} ({res['step_description']}):\n"
+                context_str += (
+                    f"Step {res['step_number']} ({res['step_description']}):\n"
+                )
                 context_str += f"Query: {res.get('query','N/A')}\n"
                 context_str += f"Total Rows: {res.get('total_rows', 0)}\n\n"
             elif res["type"] == "image":
@@ -439,7 +546,9 @@ class SQLAgent(BaseAgent):
         except Exception:
             return "Summary generation failed."
 
-    def _execute_metadata_step(self, step: Dict[str, Any], user_query: str) -> Dict[str, Any]:
+    def _execute_metadata_step(
+        self, step: Dict[str, Any], user_query: str
+    ) -> Dict[str, Any]:
         """Execute a METADATA step."""
         user_query_lower = user_query.lower()
 
@@ -458,65 +567,91 @@ class SQLAgent(BaseAgent):
 
             if "column" in user_query_lower or "structure" in user_query_lower:
                 for col in columns:
-                    table_data.append({
-                        "Column": col.get("name", ""),
-                        "Type": col.get("type", "unknown"),
-                        "Nullable": col.get("nullable", "YES"),
-                    })
+                    table_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Type": col.get("type", "unknown"),
+                            "Nullable": col.get("nullable", "YES"),
+                        }
+                    )
             else:
                 for col in columns:
-                    table_data.append({
-                        "Column": col.get("name", ""),
-                        "Type": col.get("type", "unknown"),
-                    })
+                    table_data.append(
+                        {
+                            "Column": col.get("name", ""),
+                            "Type": col.get("type", "unknown"),
+                        }
+                    )
 
             if table_data:
                 df_table = pd.DataFrame(table_data)
-                all_results.append({
-                    "type": "table",
-                    "table_name": table_name,
-                    "data": df_table.fillna("").to_dict(orient="records"),
-                    "columns": list(df_table.columns),
-                    "total_rows": len(df_table),
-                })
+                all_results.append(
+                    {
+                        "type": "table",
+                        "table_name": table_name,
+                        "data": df_table.fillna("").to_dict(orient="records"),
+                        "columns": list(df_table.columns),
+                        "total_rows": len(df_table),
+                    }
+                )
 
         if all_results:
-            return {"type": "metadata", "tables": all_results, "description": "Database schema"}
+            return {
+                "type": "metadata",
+                "tables": all_results,
+                "description": "Database schema",
+            }
         return {"type": "text", "data": self.schema, "description": "Database schema"}
 
-    async def answer(self, user_query: str, history_str: str = "") -> AsyncGenerator[str, None]:
+    async def answer(
+        self, user_query: str, history_str: str = ""
+    ) -> AsyncGenerator[str, None]:
         """Main method to answer user queries."""
         brain_output = await self._consult_brain(user_query, history_str)
         intent = brain_output.get("intent", "DATA_ACTION")
         enhanced_prompt = brain_output.get("enhanced_prompt", user_query)
 
         if intent == "GENERAL_CHAT":
-            yield json.dumps({
-                "type": "final_result",
-                "data": {
-                    "text": "I'm Consigliere, your AI database assistant.",
-                    "steps": [],
-                    "code": None,
-                },
-            })
+            yield json.dumps(
+                {
+                    "type": "final_result",
+                    "data": {
+                        "text": "I'm Consigliere, your AI database assistant.",
+                        "steps": [],
+                        "code": None,
+                    },
+                }
+            )
             return
 
         if intent == "OFFENSIVE":
-            yield json.dumps({
-                "type": "final_result",
-                "data": {
-                    "text": "I'm here to help with data analysis.",
-                    "steps": [],
-                    "code": None,
-                },
-            })
+            yield json.dumps(
+                {
+                    "type": "final_result",
+                    "data": {
+                        "text": "I'm here to help with data analysis.",
+                        "steps": [],
+                        "code": None,
+                    },
+                }
+            )
             return
 
         plan = brain_output.get("plan", [])
         if not plan:
-            plan = [{"step_number": 1, "type": "table", "title": "Direct Query", "description": enhanced_prompt, "chart_type": "none"}]
+            plan = [
+                {
+                    "step_number": 1,
+                    "type": "table",
+                    "title": "Direct Query",
+                    "description": enhanced_prompt,
+                    "chart_type": "none",
+                }
+            ]
 
-        yield json.dumps({"type": "step_start", "step_number": 0, "description": "Planning..."})
+        yield json.dumps(
+            {"type": "step_start", "step_number": 0, "description": "Planning..."}
+        )
 
         all_results = []
         all_sqls = []
@@ -529,12 +664,16 @@ class SQLAgent(BaseAgent):
             step_number = step.get("step_number", 0)
 
             if step_type != "summary":
-                yield json.dumps({
-                    "type": "step_start",
-                    "step_number": step_number,
-                    "description": step.get("title", step.get("description", "...")),
-                    "step_type": step_type,
-                })
+                yield json.dumps(
+                    {
+                        "type": "step_start",
+                        "step_number": step_number,
+                        "description": step.get(
+                            "title", step.get("description", "...")
+                        ),
+                        "step_type": step_type,
+                    }
+                )
 
             if step_type in ["metric", "table"]:
                 exec_result = await self._execute_sql_step(step, all_sqls)
@@ -547,12 +686,16 @@ class SQLAgent(BaseAgent):
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
             elif step_type == "chart":
-                exec_result = await self._execute_chart_step(step, all_sqls, enhanced_prompt)
+                exec_result = await self._execute_chart_step(
+                    step, all_sqls, enhanced_prompt
+                )
                 all_results.append(exec_result)
                 yield json.dumps({"type": "step_result", "data": exec_result})
 
             elif step_type == "summary":
-                final_summary_text = self._execute_summary_step(step, enhanced_prompt, all_results)
+                final_summary_text = self._execute_summary_step(
+                    step, enhanced_prompt, all_results
+                )
 
         formatted_code = "\n\n".join(all_sqls) if all_sqls else "-- No SQL executed"
 
@@ -562,16 +705,18 @@ class SQLAgent(BaseAgent):
             yield json.dumps({"type": "token", "data": token, "is_final": False})
 
         token_usage = self.token_tracker.to_dict()
-        yield json.dumps({
-            "type": "final_result",
-            "data": {
-                "text": accumulated_text,
-                "steps": all_results,
-                "plan": plan,
-                "code": formatted_code,
-                "token_usage": token_usage,
-            },
-        })
+        yield json.dumps(
+            {
+                "type": "final_result",
+                "data": {
+                    "text": accumulated_text,
+                    "steps": all_results,
+                    "plan": plan,
+                    "code": formatted_code,
+                    "token_usage": token_usage,
+                },
+            }
+        )
 
     async def generate_dossier(self) -> dict:
         """Generate database dossier."""
@@ -593,9 +738,14 @@ class SQLAgent(BaseAgent):
             response = self._call_llm_with_usage(messages, temperature=0.4, timeout=60)
             clean_response = response.replace("```json", "").replace("```", "").strip()
             parsed = json_repair.loads(clean_response)
-            
+
             if isinstance(parsed, dict):
-                required_fields = ["briefing", "key_entities", "data_alerts", "recommended_actions"]
+                required_fields = [
+                    "briefing",
+                    "key_entities",
+                    "data_alerts",
+                    "recommended_actions",
+                ]
                 for field in required_fields:
                     if field not in parsed:
                         parsed[field] = [] if field != "briefing" else "No briefing"
@@ -616,7 +766,7 @@ class SQLAgent(BaseAgent):
             inspector = inspect(self.executor.engine)
             tables = inspector.get_table_names()
             lines = [f"Total tables: {len(tables)}"]
-            
+
             with self.executor.engine.connect() as conn:
                 for table in tables[:10]:
                     try:
@@ -625,7 +775,7 @@ class SQLAgent(BaseAgent):
                     except:
                         row_count = "unknown"
                     lines.append(f"Table '{table}': {row_count} rows")
-            
+
             return "\n".join(lines)
         except Exception as e:
             logger.error(f"Stats error: {e}")
@@ -637,17 +787,19 @@ class SQLAgent(BaseAgent):
             inspector = inspect(self.executor.engine)
             tables = inspector.get_table_names()[:3]
             preview_parts = []
-            
+
             with self.executor.engine.connect() as conn:
                 for table in tables:
                     try:
                         result = conn.execute(text(f'SELECT * FROM "{table}" LIMIT 3'))
                         rows = result.fetchall()
                         if rows:
-                            preview_parts.append(f"Table '{table}': {len(rows)} sample rows")
+                            preview_parts.append(
+                                f"Table '{table}': {len(rows)} sample rows"
+                            )
                     except:
                         pass
-            
+
             return "\n\n".join(preview_parts) if preview_parts else "No preview"
         except Exception as e:
             return "No preview available"

@@ -37,7 +37,6 @@ class Sandbox:
 
         sandbox = RunPython()
 
-        # Core data science libraries
         sandbox.allow("pandas")
         sandbox.allow("pandas.DataFrame")
         sandbox.allow("pandas.Series")
@@ -49,7 +48,6 @@ class Sandbox:
         sandbox.allow("matplotlib.pyplot")
         sandbox.allow("matplotlib.figure")
 
-        # Safe builtins
         sandbox.allow("print")
         sandbox.allow("len")
         sandbox.allow("sum")
@@ -65,7 +63,6 @@ class Sandbox:
         sandbox.allow("map")
         sandbox.allow("filter")
 
-        # String operations
         sandbox.allow("str")
         sandbox.allow("int")
         sandbox.allow("float")
@@ -75,7 +72,6 @@ class Sandbox:
         sandbox.allow("tuple")
         sandbox.allow("set")
 
-        # Math operations
         sandbox.allow("round")
         sandbox.allow("divmod")
         sandbox.allow("pow")
@@ -107,7 +103,6 @@ class Sandbox:
             if self._sandbox is None:
                 self._sandbox = self._create_sandbox()
 
-        # Prepare context
         context = {}
         if df is not None:
             context["df"] = df
@@ -133,7 +128,6 @@ class Sandbox:
             }
 
 
-# Global sandbox instance
 _sandbox_instance: Optional[Sandbox] = None
 
 
@@ -161,7 +155,6 @@ async def execute_code(
     """
     sandbox = get_sandbox()
 
-    # Handle matplotlib - need to pass the module, not instance
     plt_context = kwargs.pop("plt", plt)
     pd_context = kwargs.pop("pd", pd)
     np_context = kwargs.pop("np", np)

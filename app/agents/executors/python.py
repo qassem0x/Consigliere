@@ -48,7 +48,10 @@ class PythonSandboxExecutor:
 
         if "result" not in clean_code:
             import logging
-            logging.getLogger(__name__).warning("Generated code doesn't assign to 'result'")
+
+            logging.getLogger(__name__).warning(
+                "Generated code doesn't assign to 'result'"
+            )
 
         return clean_code
 
@@ -58,7 +61,7 @@ class PythonSandboxExecutor:
 
     def _execute_sync(self, code: str, context: Dict[str, Any]) -> Dict[str, Any]:
         df = context.get("df")
-        
+
         if df is None:
             return {
                 "type": "error",
@@ -106,7 +109,9 @@ class PythonSandboxExecutor:
                 title = ax.get_title() or "Plot"
                 x_label = ax.get_xlabel() or "X-axis"
                 y_label = ax.get_ylabel() or "Y-axis"
-                description = f"Chart Title: {title}; X-Axis: {x_label}; Y-Axis: {y_label}"
+                description = (
+                    f"Chart Title: {title}; X-Axis: {x_label}; Y-Axis: {y_label}"
+                )
 
                 file_name = f"plot_{uuid.uuid4()}.png"
                 file_path = os.path.join(self.plots_dir, file_name)
@@ -122,10 +127,15 @@ class PythonSandboxExecutor:
 
             if isinstance(result, pd.DataFrame):
                 if result.empty:
-                    return {"type": "text", "data": "Query returned an empty result set."}
+                    return {
+                        "type": "text",
+                        "data": "Query returned an empty result set.",
+                    }
                 return {
                     "type": "table",
-                    "data": result.head(self.max_row_limit).fillna("").to_dict(orient="records"),
+                    "data": result.head(self.max_row_limit)
+                    .fillna("")
+                    .to_dict(orient="records"),
                     "columns": list(result.columns),
                     "total_rows": len(result),
                     "description": result_description,
@@ -138,7 +148,9 @@ class PythonSandboxExecutor:
                         df_temp = pd.DataFrame(result)
                         return {
                             "type": "table",
-                            "data": df_temp.head(self.max_row_limit).fillna("").to_dict(orient="records"),
+                            "data": df_temp.head(self.max_row_limit)
+                            .fillna("")
+                            .to_dict(orient="records"),
                             "columns": list(df_temp.columns),
                             "total_rows": len(df_temp),
                             "description": result_description or "Data Table",
@@ -154,10 +166,15 @@ class PythonSandboxExecutor:
                                 process_value(new_key, v)
                         elif isinstance(value, list):
                             if len(value) > 5:
-                                clean_val = ", ".join(map(str, value[:5])) + f", ... (+{len(value) - 5} more)"
+                                clean_val = (
+                                    ", ".join(map(str, value[:5]))
+                                    + f", ... (+{len(value) - 5} more)"
+                                )
                             else:
                                 clean_val = ", ".join(map(str, value))
-                            summary_rows.append({"Metric": key_prefix, "Value": clean_val})
+                            summary_rows.append(
+                                {"Metric": key_prefix, "Value": clean_val}
+                            )
                         else:
                             summary_rows.append({"Metric": key_prefix, "Value": value})
 
@@ -180,11 +197,17 @@ class PythonSandboxExecutor:
                     return {"type": "text", "data": "Query returned an empty result."}
 
                 df_temp = result.reset_index()
-                df_temp.columns = ["index", "value"] if len(df_temp.columns) == 2 else list(df_temp.columns)
+                df_temp.columns = (
+                    ["index", "value"]
+                    if len(df_temp.columns) == 2
+                    else list(df_temp.columns)
+                )
 
                 return {
                     "type": "table",
-                    "data": df_temp.head(self.max_row_limit).fillna("").to_dict(orient="records"),
+                    "data": df_temp.head(self.max_row_limit)
+                    .fillna("")
+                    .to_dict(orient="records"),
                     "columns": list(df_temp.columns),
                     "total_rows": len(df_temp),
                     "description": result_description,

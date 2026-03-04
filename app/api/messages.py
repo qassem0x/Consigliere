@@ -150,7 +150,11 @@ async def send_message(
             chat_settings = (
                 db.query(ChatSettings).where(ChatSettings.chat_id == chat_id).first()
             )
-            agent = SQLAgent(decrypted_conn_str, chat_settings=chat_settings, cancel_event=cancel_event)
+            agent = SQLAgent(
+                decrypted_conn_str,
+                chat_settings=chat_settings,
+                cancel_event=cancel_event,
+            )
             print(f"DEBUG: Successfully initialized SQLAgent for chat {chat_id}")
         except Exception as agent_err:
             print(
@@ -188,7 +192,6 @@ async def send_message(
 
                 yield chunk + "\n"
 
-                # Tiny sleep to ensure the loop yields control
                 await asyncio.sleep(0.01)
 
             if generation_completed:
@@ -235,7 +238,6 @@ async def send_message(
 
         except asyncio.CancelledError:
             print(f"DEBUG: Request cancelled by client for chat {chat_id}")
-            # Signal cancellation to the agent
             cancel_event.set()
             yield json.dumps(
                 {
@@ -244,7 +246,6 @@ async def send_message(
                     "message": "Request cancelled by user",
                 }
             )
-            # Re-raise to stop the generator
             raise
         except CancelledException as e:
             print(f"DEBUG: Agent operation cancelled for chat {chat_id}: {e}")

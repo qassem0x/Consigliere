@@ -32,7 +32,7 @@ class AgentFactory:
         executor: Optional[PythonSandboxExecutor] = None,
         cache: Optional[InMemoryCache] = None,
         schema_inference: Optional[callable] = None,
-    ) -> "ExcelAgent":
+    ) -> ExcelAgent:
         """Create an ExcelAgent with default or custom dependencies."""
         llm = cls.get_llm()
         return ExcelAgent(

@@ -35,6 +35,7 @@ export interface ChatType {
     settings?: {
         zero_leaks_mode: boolean;
         max_row_limit: number;
+        custom_prompt?: string;
     };
 }
 

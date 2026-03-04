@@ -6,7 +6,9 @@ from app.core.llm import call_llm_with_usage, call_llm_with_usage_async, call_ll
 class LiteLLMAdapter(ILanguageModel):
     """Adapter that wraps litellm LLM calls."""
 
-    def complete(self, messages: list[dict], temperature: float, timeout: int) -> LLMResponse:
+    def complete(
+        self, messages: list[dict], temperature: float, timeout: int
+    ) -> LLMResponse:
         response = call_llm_with_usage(messages, temperature, timeout)
         return LLMResponse(
             content=response.get("content", ""),
@@ -16,7 +18,9 @@ class LiteLLMAdapter(ILanguageModel):
             total_tokens=response.get("total_tokens", 0),
         )
 
-    async def complete_async(self, messages: list[dict], temperature: float, timeout: int) -> LLMResponse:
+    async def complete_async(
+        self, messages: list[dict], temperature: float, timeout: int
+    ) -> LLMResponse:
         response = await call_llm_with_usage_async(messages, temperature, timeout)
         return LLMResponse(
             content=response.get("content", ""),
@@ -26,7 +30,9 @@ class LiteLLMAdapter(ILanguageModel):
             total_tokens=response.get("total_tokens", 0),
         )
 
-    def stream(self, messages: list[dict], temperature: float, timeout: int) -> AsyncGenerator[str, None]:
+    def stream(
+        self, messages: list[dict], temperature: float, timeout: int
+    ) -> AsyncGenerator[str, None]:
         for item in call_llm_stream(messages, temperature, timeout):
             if isinstance(item, dict) and item.get("__usage__"):
                 continue

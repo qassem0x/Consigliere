@@ -114,14 +114,12 @@ class SemanticInferenceEngine:
         safe_path = self._get_safe_table_path(table_name)
         safe_column = quoted_name(column_name, quote=True)
 
-        query = text(
-            f"""
+        query = text(f"""
             SELECT 
                 COUNT({safe_column}) AS non_null_count,
                 COUNT(DISTINCT {safe_column}) AS distinct_count
             FROM {safe_path}
-        """
-        )
+        """)
 
         with self.engine.connect() as conn:
             result = conn.execute(query).fetchone()

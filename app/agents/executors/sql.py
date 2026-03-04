@@ -23,15 +23,17 @@ class SQLExecutor:
     ):
         if connection_string is None and engine is None:
             raise ValueError("Either connection_string or engine must be provided")
-        
+
         self.connection_string = connection_string
         self.max_row_limit = max_row_limit
         self.plots_dir = plots_dir
         self.max_retries = max_retries
-        self.target_db = connection_string.split(":")[0] if connection_string else "unknown"
-        
+        self.target_db = (
+            connection_string.split(":")[0] if connection_string else "unknown"
+        )
+
         os.makedirs(plots_dir, exist_ok=True)
-        
+
         self._engine = engine
 
     @property
@@ -63,16 +65,18 @@ class SQLExecutor:
     def _clean_sql(self, response: str) -> str:
         """Clean SQL response from LLM output."""
         cleaned = response.replace("```sql", "").replace("```", "").strip()
-        if not cleaned.lower().startswith("select") and not cleaned.lower().startswith("with"):
+        if not cleaned.lower().startswith("select") and not cleaned.lower().startswith(
+            "with"
+        ):
             match = re.search(r"(SELECT|WITH)\s", cleaned, re.IGNORECASE)
             if match:
-                cleaned = cleaned[match.start():]
+                cleaned = cleaned[match.start() :]
         return cleaned
 
     async def execute(self, sql_query: str, context: dict = None) -> Dict[str, Any]:
         """Execute SQL query and return results as DataFrame."""
         context = context or {}
-        
+
         if not self._sanitize_sql(sql_query):
             return {
                 "type": "error",
@@ -84,14 +88,14 @@ class SQLExecutor:
                 result = conn.execute(text(sql_query))
                 if result.returns_rows:
                     df = pd.DataFrame(result.fetchall(), columns=result.keys())
-                    
+
                     if df.empty:
                         return {
                             "type": "text",
                             "data": "Query returned no results.",
                             "query": sql_query,
                         }
-                    
+
                     df_clean = df.where(pd.notnull(df), None)
                     data_dict = (
                         df_clean.head(self.max_row_limit)
@@ -114,10 +118,7 @@ class SQLExecutor:
             }
 
     async def execute_with_fix(
-        self, 
-        sql_query: str, 
-        llm_fix_func, 
-        context: dict = None
+        self, sql_query: str, llm_fix_func, context: dict = None
     ) -> Dict[str, Any]:
         """Execute SQL with retry logic on error."""
         context = context or {}
@@ -136,14 +137,14 @@ class SQLExecutor:
                     result = conn.execute(text(current_query))
                     if result.returns_rows:
                         df = pd.DataFrame(result.fetchall(), columns=result.keys())
-                        
+
                         if df.empty:
                             return {
                                 "type": "text",
                                 "data": "Query returned no results.",
                                 "query": current_query,
                             }
-                        
+
                         df_clean = df.where(pd.notnull(df), None)
                         data_dict = (
                             df_clean.head(self.max_row_limit)
@@ -215,7 +216,9 @@ class SQLExecutor:
                 title = ax.get_title() or "Chart"
                 x_label = ax.get_xlabel() or "X-axis"
                 y_label = ax.get_ylabel() or "Y-axis"
-                description = f"Chart Title: {title}; X-Axis: {x_label}; Y-Axis: {y_label}"
+                description = (
+                    f"Chart Title: {title}; X-Axis: {x_label}; Y-Axis: {y_label}"
+                )
 
                 file_name = f"plot_{uuid.uuid4()}.png"
                 file_path = os.path.join(self.plots_dir, file_name)
@@ -229,7 +232,10 @@ class SQLExecutor:
                     "description": description,
                 }
             else:
-                return {"type": "error", "data": "Chart code executed but no plot was created."}
+                return {
+                    "type": "error",
+                    "data": "Chart code executed but no plot was created.",
+                }
 
         except Exception as e:
             plt.close("all")
