@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, Dict, Generator, Optional, Tuple
 from dataclasses import dataclass
 
 
@@ -40,7 +40,12 @@ class ILanguageModel(ABC):
     @abstractmethod
     def stream(
         self, messages: list[dict], temperature: float, timeout: int
-    ) -> AsyncGenerator[str, None]:
+    ) -> Generator[Tuple[str, Dict[str, int]], None, None]:
+        """Stream response. Yields (token, usage_dict) tuples.
+        
+        Usage dict contains prompt_tokens, completion_tokens, total_tokens.
+        Empty dict for regular tokens, populated on final usage token.
+        """
         pass
 
 

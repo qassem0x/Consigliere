@@ -19,6 +19,9 @@ interface ChatViewProps {
     onSendMessage: () => void;
     onActionClick: (action: string) => void;
     onCancel?: () => void;
+    hasMoreMessages?: boolean;
+    isLoadingMore?: boolean;
+    onLoadMore?: () => void;
 }
 
 export const MessageTable: React.FC<{ data: any[]; compact?: boolean }> = memo(({ data, compact }) => {
@@ -148,7 +151,10 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
     onInputChange,
     onSendMessage,
     onActionClick,
-    onCancel
+    onCancel,
+    hasMoreMessages,
+    isLoadingMore,
+    onLoadMore
 }) => {
     const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
         messages[messages.length - 1]?.id || null
@@ -206,6 +212,20 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
                                     onActionClick={onActionClick}
                                 />
                             )}
+                            
+                            {/* Load More Button */}
+                            {hasMoreMessages && !loadingChatHistory && (
+                                <div className="flex justify-center py-4">
+                                    <button
+                                        onClick={onLoadMore}
+                                        disabled={isLoadingMore}
+                                        className="px-4 py-2 text-xs font-mono text-slate-400 hover:text-white border border-white/10 hover:border-white/20 rounded-lg transition-colors disabled:opacity-50"
+                                    >
+                                        {isLoadingMore ? 'Loading...' : 'Load More Messages'}
+                                    </button>
+                                </div>
+                            )}
+
                             {messages.map((msg, idx) => (
                                 <MessageBubble
                                     key={msg.id || idx}

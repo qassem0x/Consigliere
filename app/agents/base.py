@@ -2,7 +2,7 @@ import json
 import logging
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, AsyncGenerator
+from typing import Any, AsyncGenerator, Dict, Generator, List, Optional
 
 from app.agents.interfaces import ILanguageModel
 from app.models.db_models import ChatSettings
@@ -97,7 +97,7 @@ class BaseAgent(ABC):
 
     def _stream_final_response(
         self, user_query: str, all_results: List[Dict[str, Any]]
-    ) -> AsyncGenerator[str, None]:
+    ) -> Generator[str, None, None]:
         """Stream final response token by token."""
         from app.agents.prompts.base import ANALYSIS_FORMAT_PROMPT
 
@@ -148,9 +148,11 @@ class BaseAgent(ABC):
 
         try:
             full_response = ""
-            for item in self.llm.stream(messages, temperature=0.7, timeout=30):
-                full_response += item
-                yield item
+            for token, usage in self.llm.stream(messages, temperature=0.7, timeout=30):
+                if usage:
+                    self.token_tracker.add(usage)
+                full_response += token
+                yield token
         except Exception as e:
             logger.error(f"Stream error: {e}")
             yield f"Analysis complete. {combined_summary}"

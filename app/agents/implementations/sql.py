@@ -633,12 +633,12 @@ class SQLAgent(BaseAgent):
             )
             return
 
-        if intent == "OFFENSIVE":
+        if intent == "FORBIDDEN":
             yield json.dumps(
                 {
                     "type": "final_result",
                     "data": {
-                        "text": "I'm here to help with data analysis.",
+                        "text": "I can only perform read operations (SELECT queries). I cannot execute INSERT, UPDATE, DELETE, DROP, or any other write/destructive operations. Please ask me to analyze, query, or visualize your data.",
                         "steps": [],
                         "code": None,
                     },
@@ -736,8 +736,6 @@ class SQLAgent(BaseAgent):
                 "role": "user",
                 "content": DOSSIER_PROMPT.format(
                     schema=self.schema,
-                    stats=self._generate_stats(),
-                    preview=self._generate_preview(),
                     source_type="SQL database",
                 ),
             }

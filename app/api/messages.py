@@ -31,9 +31,11 @@ fernet = Fernet(
 router = APIRouter()
 
 
-@router.get("/messages/{chat_id}", response_model=list[MessageOut])
+@router.get("/messages/{chat_id}")
 def get_chat_history(
     chat_id: UUID,
+    limit: int = 20,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -45,27 +47,33 @@ def get_chat_history(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    messages = (
+    query = (
         db.query(Message)
         .filter(Message.chat_id == chat_id)
-        .order_by(Message.created_at.asc())
+        .order_by(Message.created_at.desc())
+    )
+    
+    total = query.count()
+    
+    messages = (
+        query
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
-    logger.info(f"Retrieved {len(messages)} messages for chat {chat_id}")
+    logger.info(f"Retrieved {len(messages)} messages for chat {chat_id} (offset={offset}, limit={limit}, total={total})")
     if messages:
         last_msg = messages[-1]
         logger.info(
             f"Last message tokens: prompt={last_msg.prompt_tokens}, completion={last_msg.completion_tokens}, total={last_msg.total_tokens}"
         )
 
-        # Debug: Check what MessageOut serializes
-        msg_out = MessageOut.model_validate(last_msg)
-        logger.info(
-            f"MessageOut serialized: prompt_tokens={msg_out.prompt_tokens}, completion_tokens={msg_out.completion_tokens}, total_tokens={msg_out.total_tokens}"
-        )
-
-    return messages
+    return {
+        "messages": messages,
+        "total": total,
+        "has_more": offset + limit < total
+    }
 
 
 @router.post("/messages/{chat_id}", response_model=MessageOut)
@@ -83,7 +91,7 @@ async def send_message(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    memory = ChatMemory(chat_id=chat_id, db=db, max_messages=20)
+    memory = ChatMemory(chat_id=chat_id, db=db, max_messages=3)
     history_str = memory.get_context(include_code=True, include_steps=True)
 
     user_msg = Message(chat_id=chat_id, role="user", content=msg_data.content)

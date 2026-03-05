@@ -7,7 +7,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.db_models import User
 from app.core import security
-from app.models.auth import UserCreate, Token, TokenRefresh, UserResponse
+from app.models.auth import UserCreate, Token, UserResponse
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -74,7 +74,7 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@router.post("/refresh", response_model=TokenRefresh)
+@router.post("/refresh", response_model=Token)
 def refresh_token(refresh_token: str = Query(...), db: Session = Depends(get_db)):
     """Refresh access token using refresh token from query param"""
     payload = security.decode_token(refresh_token)
@@ -115,11 +115,11 @@ def refresh_token(refresh_token: str = Query(...), db: Session = Depends(get_db)
         )
 
     access_token = security.create_access_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "token_type": "bearer"}
+    new_refresh_token = security.create_refresh_token(data={"sub": str(user.id)})
+    return {"access_token": access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
 
 
 @router.post("/logout")
-def logout(token: str = Query(...), current_user: User = Depends(get_current_user)):
-    """Logout by blacklisting the current access token"""
-    security.add_to_blacklist(token)
+def logout(current_user: User = Depends(get_current_user)):
+    """Logout by discarding tokens on client side"""
     return {"message": "Successfully logged out"}

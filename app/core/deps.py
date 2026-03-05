@@ -6,7 +6,7 @@ from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import SECRET_KEY, ALGORITHM, is_token_blacklisted
+from app.core.security import SECRET_KEY, ALGORITHM
 from app.models.db_models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=True)
@@ -16,11 +16,6 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    if is_token_blacklisted(token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked",
-        )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id_str: str | None = payload.get("sub")

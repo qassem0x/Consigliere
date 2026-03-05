@@ -507,20 +507,11 @@ Do NOT mention schema, columns, or technical details.""",
         """Generate initial briefing about the dataset."""
         from app.agents.prompts.base import DOSSIER_PROMPT
 
-        stats_summary = self._calculate_stats()
-
-        if self.chat_settings.zero_leaks_mode is True:
-            preview = "REDACTED_FOR_PRIVACY (Zero Leaks Mode Active). Use schema and stats only."
-        else:
-            preview = self.df.head(5).to_string()
-
         messages = [
             {
                 "role": "user",
                 "content": DOSSIER_PROMPT.format(
                     schema=self.schema,
-                    preview=preview,
-                    stats=stats_summary,
                     source_type="Excel spreadsheet",
                 ),
             }
@@ -592,12 +583,12 @@ Do NOT mention schema, columns, or technical details.""",
             )
             return
 
-        if intent == "OFFENSIVE":
+        if intent == "FORBIDDEN":
             yield json.dumps(
                 {
                     "type": "final_result",
                     "data": {
-                        "text": "I'm here to help with professional data analysis. Let's keep it focused on the data.",
+                        "text": "I can only perform read operations on your data. I cannot execute write, update, delete, or any destructive operations. Please ask me to analyze, query, or visualize your data.",
                         "steps": [],
                         "code": None,
                     },

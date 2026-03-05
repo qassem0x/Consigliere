@@ -5,8 +5,10 @@ export const chatService = {
     const response = await api.get('/chats');
     return response.data;
   },
-  loadChatHistory: async (chatId: string) => {
-    const response = await api.get(`/messages/${chatId}`);
+  loadChatHistory: async (chatId: string, limit: number = 20, offset: number = 0) => {
+    const response = await api.get(`/messages/${chatId}`, {
+      params: { limit, offset }
+    });
     return response.data;
   },
   sendMessage: async (chatId: string, content: string) => {

@@ -44,8 +44,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const res = await api.get('/auth/me');
           setUser(res.data);
           if (location.pathname === '/login') {
-             navigate('/');
-          }
+             navigate('/dashboard');
+           }
         } catch (error) {
           console.error("Session expired:", error);
           if (storedRefreshToken) {
@@ -105,7 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const res = await api.get('/auth/me');
       setUser(res.data);
-      navigate('/');
+      navigate('/dashboard');
     } catch (error) {
       console.error("Failed to fetch user profile", error);
     }

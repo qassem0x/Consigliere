@@ -47,7 +47,8 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({ item, isActive, onLoad
         e.stopPropagation();
         setLocalSettings({
             zero_leaks_mode: item.settings?.zero_leaks_mode ?? false,
-            max_row_limit: item.settings?.max_row_limit ?? 100
+            max_row_limit: item.settings?.max_row_limit ?? 100,
+            custom_prompt: item.settings?.custom_prompt ?? ''
         });
         setShowSettings(!showSettings);
     };

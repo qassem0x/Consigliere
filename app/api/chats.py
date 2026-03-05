@@ -1,6 +1,6 @@
 from fastapi.routing import APIRouter
 from fastapi import Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.core.deps import get_current_user
 from app.models.db_models import User
 from app.models.chats import ChatCreate, ChatOut, ChatSettingsUpdate, ChatSettingsOut
@@ -49,6 +49,11 @@ def get_my_chats(
 
     chats = (
         db.query(Chat)
+        .options(
+            joinedload(Chat.settings),
+            joinedload(Chat.file),
+            joinedload(Chat.connection),
+        )
         .filter(Chat.user_id == current_user.id)
         .order_by(Chat.updated_at.desc())
         .all()
@@ -61,6 +66,7 @@ def get_my_chats(
             settings = ChatSettingsOut(
                 zero_leaks_mode=chat.settings.zero_leaks_mode,
                 max_row_limit=chat.settings.max_row_limit,
+                custom_prompt=chat.settings.custom_prompt,
             )
         chat_data = {
             "id": chat.id,
@@ -187,11 +193,12 @@ def update_chat_settings(
             custom_prompt=settings.custom_prompt,
         )
         db.add(new_settings)
+        db.flush()
+        chat.settings = new_settings
     else:
         chat.settings.zero_leaks_mode = settings.zero_leaks_mode
         chat.settings.max_row_limit = settings.max_row_limit
         chat.settings.custom_prompt = settings.custom_prompt
-        db.add(chat.settings)
 
     db.commit()
     db.refresh(chat)

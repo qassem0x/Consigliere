@@ -33,6 +33,9 @@ export const DashboardPage: React.FC = () => {
     }>({ phase: null });
 
     const [loadingChatHistory, setLoadingChatHistory] = useState(false);
+    const [hasMoreMessages, setHasMoreMessages] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [messageOffset, setMessageOffset] = useState(0);
     const [modelName, setModelName] = useState<string | undefined>(undefined);
 
     const [searchParams, setSearchParams] = useSearchParams();
@@ -40,15 +43,18 @@ export const DashboardPage: React.FC = () => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const messageOffsetRef = useRef(0);
+    const isLoadMoreRef = useRef(false);
 
     // --- SCROLL HANDLING ---
     useEffect(() => {
         if (!scrollRef.current) return;
-        if (messages.length > 0) {
+        
+        // Only scroll to bottom on initial load, not on loadMore
+        if (!isLoadMoreRef.current && messages.length > 0) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        } else {
-            scrollRef.current.scrollTop = 0;
         }
+        isLoadMoreRef.current = false;
     }, [messages]);
 
     // --- DATA LOADING ---
@@ -86,7 +92,7 @@ export const DashboardPage: React.FC = () => {
         }
     }, [activeChatId, setSearchParams]);
 
-    const handleUpdateSettings = useCallback(async (chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number }) => {
+    const handleUpdateSettings = useCallback(async (chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number; custom_prompt?: string }) => {
         try {
             await chatService.updateChatSettings(chatId, settings);
             setUserChats(prev => prev.map(chat =>
@@ -98,22 +104,33 @@ export const DashboardPage: React.FC = () => {
         }
     }, []);
 
-    const fetchChatData = useCallback(async (id: string) => {
-        setActiveChatId(id);
-        setView('chat');
-        setLoadingChatHistory(true);
-        setMessages([]);
+    const fetchChatData = useCallback(async (id: string, loadMore: boolean = false) => {
+        if (loadMore) {
+            setIsLoadingMore(true);
+            isLoadMoreRef.current = true;
+        } else {
+            setActiveChatId(id);
+            setView('chat');
+            setLoadingChatHistory(true);
+            setMessages([]);
+            setMessageOffset(0);
+            setHasMoreMessages(false);
+            messageOffsetRef.current = 0;
+        }
 
         try {
+            const offset = loadMore ? messageOffsetRef.current : 0;
             const [history, dossier] = await Promise.all([
-                chatService.loadChatHistory(id),
-                fileService.loadDossier(id)
+                chatService.loadChatHistory(id, 20, offset),
+                loadMore ? Promise.resolve(null) : fileService.loadDossier(id)
             ]);
 
-            setCurrentDossier(dossier);
+            if (!loadMore) {
+                setCurrentDossier(dossier);
+            }
 
             // Map backend messages to frontend format
-            const mapped: Message[] = history.map((m: any) => {
+            const mapped: Message[] = history.messages.map((m: any) => {
                 let content = m.content;
                 let tableData = null;
                 let imageData = null;
@@ -156,16 +173,44 @@ export const DashboardPage: React.FC = () => {
                 } as Message;
             });
 
-            setMessages(mapped);
+            if (loadMore) {
+                // Preserve scroll position when prepending older messages
+                if (scrollRef.current && mapped.length > 0) {
+                    const prevScrollHeight = scrollRef.current.scrollHeight;
+                    setMessages(prev => [...mapped, ...prev]);
+                    // Adjust scroll position to account for new messages at top
+                    requestAnimationFrame(() => {
+                        if (scrollRef.current) {
+                            scrollRef.current.scrollTop += scrollRef.current.scrollHeight - prevScrollHeight;
+                        }
+                    });
+                } else {
+                    setMessages(prev => [...mapped, ...prev]);
+                }
+                
+                // Only increment offset if we got messages
+                if (mapped.length > 0) {
+                    messageOffsetRef.current += mapped.length;
+                    setMessageOffset(messageOffsetRef.current);
+                }
+            } else {
+                setMessages(mapped.reverse());
+                messageOffsetRef.current = mapped.length;
+                setMessageOffset(mapped.length);
+            }
+            setHasMoreMessages(history.has_more);
 
         } catch (error: any) {
-            setActiveChatId(null);
-            setView('home');
-            setMessages([]);
-            setCurrentDossier(null);
-            setSearchParams({});
+            if (!loadMore) {
+                setActiveChatId(null);
+                setView('home');
+                setMessages([]);
+                setCurrentDossier(null);
+                setSearchParams({});
+            }
         } finally {
             setLoadingChatHistory(false);
+            setIsLoadingMore(false);
         }
     }, []);
 
@@ -494,6 +539,9 @@ export const DashboardPage: React.FC = () => {
                             onSendMessage={handleSendMessage}
                             onActionClick={handleRecommendedAction}
                             onCancel={handleCancelRequest}
+                            hasMoreMessages={hasMoreMessages}
+                            isLoadingMore={isLoadingMore}
+                            onLoadMore={() => activeChatId && fetchChatData(activeChatId, true)}
                         />
                     )}
 

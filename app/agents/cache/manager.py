@@ -2,6 +2,7 @@ import hashlib
 import logging
 import time
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -46,6 +47,13 @@ class SQLCacheManager:
         """Create a hash of connection string for cache key (without exposing credentials)."""
         return hashlib.sha256(connection_string.encode()).hexdigest()[:16]
 
+    def _mask_connection_string(self, conn_str: str) -> str:
+        """Mask password in connection string to avoid exposing credentials."""
+        parsed = urlparse(conn_str)
+        if parsed.password:
+            return conn_str.replace(parsed.password, "****")
+        return conn_str
+
     def _hash_query(self, query: str) -> str:
         """Create a hash of SQL query for cache key."""
         return hashlib.md5(query.encode()).hexdigest()
@@ -81,7 +89,7 @@ class SQLCacheManager:
         self._engine_store[cache_key] = {
             "engine": engine,
             "timestamp": current_time,
-            "connection_string": connection_string,
+            "connection_string": self._mask_connection_string(connection_string),
         }
 
         return engine

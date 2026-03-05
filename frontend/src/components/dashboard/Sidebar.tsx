@@ -13,7 +13,7 @@ interface SidebarProps {
     onLoadChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onLogout: () => void;
-    onUpdateSettings?: (chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number }) => void;
+    onUpdateSettings?: (chatId: string, settings: { zero_leaks_mode: boolean; max_row_limit: number; custom_prompt?: string }) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = memo(({

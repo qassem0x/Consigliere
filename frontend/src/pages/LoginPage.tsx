@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, LockKeyhole, AlertCircle, Loader2 } from 'lucide-react';
 import { AuthLayout, InputGroup } from '../components';
@@ -9,12 +9,18 @@ import { useAuth } from "../contexts/AuthContext"
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

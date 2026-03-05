@@ -189,6 +189,9 @@ class Chat(Base):
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        Index('ix_messages_chat_id_created_at', 'chat_id', 'created_at'),
+    )
 
     id = Column(
         UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()")
