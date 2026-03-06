@@ -24,25 +24,22 @@ const processQueue = (error: unknown, token: string | null = null) => {
     failedQueue = [];
 };
 
-api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-});
-
 api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
 
         if (error.response?.status === 401 && !originalRequest._retry) {
+            const url = originalRequest.url || '';
+            
+            if (url.includes('/auth/me') || url.includes('/auth/refresh')) {
+                return Promise.reject(error);
+            }
+
             if (isRefreshing) {
                 return new Promise((resolve, reject) => {
                     failedQueue.push({ resolve, reject });
-                }).then(token => {
-                    originalRequest.headers.Authorization = `Bearer ${token}`;
+                }).then(() => {
                     return api(originalRequest);
                 });
             }
@@ -50,30 +47,13 @@ api.interceptors.response.use(
             originalRequest._retry = true;
             isRefreshing = true;
 
-            const refreshToken = localStorage.getItem('refresh_token');
-
-            if (!refreshToken) {
-                isRefreshing = false;
-                localStorage.removeItem('token');
-                window.location.href = '/login';
-                return Promise.reject(error);
-            }
-
             try {
-                const res = await axios.post(`${API_BASE_URL}/auth/refresh`, null, {
-                    params: { refresh_token: refreshToken }
-                });
-                const newAccessToken = res.data.access_token;
-                localStorage.setItem('token', newAccessToken);
-                processQueue(null, newAccessToken);
-                originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-                isRefreshing = false;
+                const res = await api.post('/auth/refresh');
+                processQueue(null, res.data.access_token);
                 return api(originalRequest);
             } catch (refreshError) {
                 processQueue(refreshError, null);
                 isRefreshing = false;
-                localStorage.removeItem('token');
-                localStorage.removeItem('refresh_token');
                 window.location.href = '/login';
                 return Promise.reject(refreshError);
             }
@@ -84,19 +64,12 @@ api.interceptors.response.use(
 );
 
 export const fetchStream = async (endpoint: string, body: any) => {
-    const token = localStorage.getItem('token');
-
-    const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-    };
-
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
-        headers: headers,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'include',
         body: JSON.stringify(body),
     });
 
@@ -108,7 +81,9 @@ export const fetchStream = async (endpoint: string, body: any) => {
 };
 
 export const fetchModel = async (): Promise<string> => {
-    const response = await fetch(`${API_BASE_URL}/model`);
+    const response = await fetch(`${API_BASE_URL}/model`, {
+        credentials: 'include',
+    });
     if (!response.ok) {
         throw new Error(`Failed to fetch model: ${response.status}`);
     }

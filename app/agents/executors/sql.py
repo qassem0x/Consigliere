@@ -10,6 +10,18 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 
 
+def _get_readonly_connect_args(connection_string: str) -> dict:
+    """Get readonly connection args based on database type."""
+    if not connection_string:
+        return {}
+    lower = connection_string.lower()
+    if lower.startswith("postgresql") or lower.startswith("postgres"):
+        return {"options": "-c default_transaction_read_only=on"}
+    elif lower.startswith("mysql"):
+        return {"read_only": True}
+    return {}
+
+
 class SQLExecutor:
     """Executor for SQL queries against databases."""
 
@@ -39,7 +51,10 @@ class SQLExecutor:
     @property
     def engine(self):
         if self._engine is None and self.connection_string:
-            self._engine = create_engine(self.connection_string)
+            readonly_args = _get_readonly_connect_args(self.connection_string)
+            self._engine = create_engine(
+                self.connection_string, connect_args=readonly_args
+            )
         return self._engine
 
     def _sanitize_sql(self, sql_query: str) -> bool:
@@ -85,6 +100,7 @@ class SQLExecutor:
 
         try:
             with self.engine.connect() as conn:
+                conn.execute(text("SET TRANSACTION READ ONLY"))
                 result = conn.execute(text(sql_query))
                 if result.returns_rows:
                     df = pd.DataFrame(result.fetchall(), columns=result.keys())
@@ -134,6 +150,7 @@ class SQLExecutor:
 
             try:
                 with self.engine.connect() as conn:
+                    conn.execute(text("SET TRANSACTION READ ONLY"))
                     result = conn.execute(text(current_query))
                     if result.returns_rows:
                         df = pd.DataFrame(result.fetchall(), columns=result.keys())

@@ -114,6 +114,55 @@ def get_chat_dossier(
     }
 
 
+@router.get("/chats/{chat_id}/memory")
+def get_chat_memory(
+    chat_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.db_models import Message
+    from app.agents.memory.chat_memory import DEFAULT_MAX_MESSAGES
+    import json
+    
+    chat = (
+        db.query(Chat)
+        .filter(Chat.id == chat_id, Chat.user_id == current_user.id)
+        .first()
+    )
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    messages = (
+        db.query(Message)
+        .filter(Message.chat_id == chat_id)
+        .order_by(Message.created_at.desc())
+        .limit(DEFAULT_MAX_MESSAGES)
+        .all()
+    )
+
+    recent_messages = []
+    for msg in messages:
+        content = msg.content
+        try:
+            content_dict = json.loads(str(msg.content))
+            content = content_dict.get("text", str(msg.content))
+        except (json.JSONDecodeError, TypeError):
+            pass
+        
+        recent_messages.append({
+            "role": msg.role,
+            "content": content[:500] + "..." if len(str(content)) > 500 else content,
+            "created_at": msg.created_at.isoformat() if msg.created_at else None,
+        })
+
+    return {
+        "summary": chat.summary or "No summary available.",
+        "message_count": len(messages),
+        "max_messages": DEFAULT_MAX_MESSAGES,
+        "recent_messages": recent_messages,
+    }
+
+
 @router.delete("/chats/{chat_id}", status_code=204)
 def delete_chat(
     chat_id: str,

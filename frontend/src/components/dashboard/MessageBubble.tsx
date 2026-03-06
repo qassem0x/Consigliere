@@ -20,7 +20,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = memo(({ msg, idx, sho
     const hasSteps = msg.steps && msg.steps.length > 0;
     const isStreaming = msg.streamingStatus && msg.streamingStatus !== 'complete';
     const hasTokenUsage = msg.total_tokens !== undefined && msg.total_tokens > 0;
-    const isIncompleteAssistant = isAssistant && (msg.streamingStatus === 'error' || msg.streamingStatus === 'cancelled' || !msg.content);
+    const isIncompleteAssistant = isAssistant && (msg.streamingStatus === 'error' || msg.streamingStatus === 'cancelled');
 
     return (
             <div

@@ -1,19 +1,29 @@
 from uuid import UUID
+from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import SECRET_KEY, ALGORITHM
+from app.core.security import SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME
 from app.models.db_models import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=True)
+
+def get_token_from_cookie(request: Request) -> str:
+    """Extract access token from HttpOnly cookie."""
+    token = request.cookies.get(ACCESS_COOKIE_NAME)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+    return token
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: Annotated[str, Depends(get_token_from_cookie)],
     db: Session = Depends(get_db),
 ) -> User:
     try:

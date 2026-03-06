@@ -1,11 +1,19 @@
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from jose import jwt
-from app.core.config import SECRET_KEY
+from app.core.config import SECRET_KEY, get_env
+from fastapi.responses import Response
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+ACCESS_COOKIE_NAME = "access_token"
+REFRESH_COOKIE_NAME = "refresh_token"
+
+import os
+
+DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
@@ -30,6 +38,39 @@ def create_refresh_token(data: dict):
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def create_token_response(response: Response, access_token: str, refresh_token: str) -> Response:
+    """Set access and refresh tokens as HttpOnly cookies."""
+    secure = not DEBUG
+    samesite = "lax" if DEBUG else "strict"
+    
+    response.set_cookie(
+        key=ACCESS_COOKIE_NAME,
+        value=access_token,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        path="/",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        path="/",
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+    )
+    return response
+
+
+def clear_auth_cookies(response: Response) -> Response:
+    """Clear authentication cookies."""
+    response.delete_cookie(key=ACCESS_COOKIE_NAME, path="/")
+    response.delete_cookie(key=REFRESH_COOKIE_NAME, path="/")
+    return response
 
 
 def decode_token(token: str) -> dict | None:

@@ -11,6 +11,18 @@ from sqlalchemy.engine import Engine
 logger = logging.getLogger(__name__)
 
 
+def _get_readonly_connect_args(connection_string: str) -> dict:
+    """Get readonly connection args based on database type."""
+    if not connection_string:
+        return {}
+    lower = connection_string.lower()
+    if lower.startswith("postgresql") or lower.startswith("postgres"):
+        return {"options": "-c default_transaction_read_only=on"}
+    elif lower.startswith("mysql"):
+        return {"read_only": True}
+    return {}
+
+
 class SQLCacheManager:
     """Manages SQL-specific caching (engines, schema, queries).
 
@@ -84,7 +96,8 @@ class SQLCacheManager:
         else:
             logger.info(f"CACHE MISS: Creating new engine")
 
-        engine = create_engine(connection_string)
+        readonly_args = _get_readonly_connect_args(connection_string)
+        engine = create_engine(connection_string, connect_args=readonly_args)
 
         self._engine_store[cache_key] = {
             "engine": engine,

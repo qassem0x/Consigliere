@@ -34,6 +34,7 @@ class ChatOut(BaseModel):
 
     id: UUID
     title: Optional[str] = None
+    summary: Optional[str] = None
     file_id: Optional[UUID] = None
     connection_id: Optional[UUID] = None
     created_at: datetime

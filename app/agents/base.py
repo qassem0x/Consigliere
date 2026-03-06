@@ -141,7 +141,6 @@ class BaseAgent(ABC):
                 "content": ANALYSIS_FORMAT_PROMPT.format(
                     user_query=user_query,
                     combined_summary=combined_summary,
-                    zero_leaks_mode=self.chat_settings.zero_leaks_mode,
                 ),
             }
         ]

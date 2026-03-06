@@ -52,28 +52,21 @@ def get_chat_history(
         .filter(Message.chat_id == chat_id)
         .order_by(Message.created_at.desc())
     )
-    
-    total = query.count()
-    
-    messages = (
-        query
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
 
-    logger.info(f"Retrieved {len(messages)} messages for chat {chat_id} (offset={offset}, limit={limit}, total={total})")
+    total = query.count()
+
+    messages = query.offset(offset).limit(limit).all()
+
+    logger.info(
+        f"Retrieved {len(messages)} messages for chat {chat_id} (offset={offset}, limit={limit}, total={total})"
+    )
     if messages:
         last_msg = messages[-1]
         logger.info(
             f"Last message tokens: prompt={last_msg.prompt_tokens}, completion={last_msg.completion_tokens}, total={last_msg.total_tokens}"
         )
 
-    return {
-        "messages": messages,
-        "total": total,
-        "has_more": offset + limit < total
-    }
+    return {"messages": messages, "total": total, "has_more": offset + limit < total}
 
 
 @router.post("/messages/{chat_id}", response_model=MessageOut)
@@ -218,6 +211,9 @@ async def send_message(
                     db_session.add(assistant_msg)
                     db_session.commit()
                     db_session.refresh(assistant_msg)
+
+                    memory = ChatMemory(chat_id=chat_id, db=db_session, max_messages=6)
+                    await memory.update_summary(assistant_msg)
 
                     yield json.dumps(
                         {

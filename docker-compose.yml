@@ -29,8 +29,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: consigliere_api
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     volumes:
       - ./data:/code/data
       - ./static:/code/static
@@ -38,8 +38,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@db:5432/consigliere}
       SECRET_KEY: ${SECRET_KEY}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      # Nginx proxies /api → backend, so origin seen by browser is http://localhost
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:3000}
       MODEL_NAME: ${MODEL_NAME:-groq/llama-3.3-70b-versatile}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
@@ -51,20 +50,17 @@ services:
     restart: unless-stopped
 
   # ─────────────────────────────────────────────
-  # React Frontend (Vite build → Nginx)
+  # React Frontend (Vite dev server)
   # ─────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        # Empty string → frontend will call /api/... which Nginx proxies to backend
-        VITE_API_URL: ""
+      dockerfile: Dockerfile.dev
     container_name: consigliere_frontend
     ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - "3000:3000"
+    environment:
+      VITE_API_URL: "http://localhost:8000"
     depends_on:
       - backend
     restart: unless-stopped

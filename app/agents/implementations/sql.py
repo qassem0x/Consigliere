@@ -210,7 +210,7 @@ class SQLAgent(BaseAgent):
         chart_type = step.get("chart_type", "bar")
 
         if self.chat_settings.zero_leaks_mode is True:
-            data_sample = "REDACTED_FOR_PRIVACY"
+            data_sample = "(hidden for privacy)"
         else:
             data_sample = df.head(5).to_dict(orient="records")
 
@@ -545,7 +545,6 @@ class SQLAgent(BaseAgent):
                     user_query=user_query,
                     context_str=context_str,
                     step_description=step.get("title", ""),
-                    zero_leaks_mode=self.chat_settings.zero_leaks_mode,
                 ),
             }
         ]

@@ -32,16 +32,13 @@ export const LoginPage: React.FC = () => {
       formData.append('username', email); 
       formData.append('password', password);
 
-      const res = await api.post('/auth/login', formData, {
+      await api.post('/auth/login', formData, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         }
       });
 
-      if (res.status === 200) {
-        const { access_token, refresh_token } = res.data;
-        await login(access_token, refresh_token);
-      }
+      await login();
     } catch (err: any) {
       console.error('Login failed:', err);
       if (err.response?.status === 401) {

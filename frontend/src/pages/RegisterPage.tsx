@@ -33,12 +33,8 @@ export const RegisterPage: React.FC = () => {
         full_name: name,
       };
 
-      const res = await api.post('/auth/register', payload);
-
-      if (res.status === 201) {
-        const { access_token, refresh_token } = res.data;
-        await login(access_token, refresh_token);
-      }
+      await api.post('/auth/register', payload);
+      await login();
     } catch (err: any) {
       console.error('Registration failed:', err);
       

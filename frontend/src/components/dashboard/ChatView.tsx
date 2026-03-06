@@ -296,11 +296,11 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Analysis Protocol
                     </span>
-                    {selectedMessageId && (
+                    {/* {selectedMessageId && (
                         <span className="ml-auto text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
                             ID: {selectedMessageId.substring(0, 8)}
                         </span>
-                    )}
+                    )} */}
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">

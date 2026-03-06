@@ -1,5 +1,5 @@
 import React from 'react';
-import { PanelLeftClose, PanelLeft, Zap, Shield } from 'lucide-react';
+import { PanelLeftClose, PanelLeft, Zap, Shield, Brain } from 'lucide-react';
 
 interface HeaderProps {
     isSidebarOpen: boolean;
@@ -13,9 +13,10 @@ interface HeaderProps {
         messages: number;
     };
     zeroLeaksMode?: boolean;
+    onOpenMemory?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, view, onToggleSidebar, modelName, chatTokenStats, zeroLeaksMode }) => {
+export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, view, onToggleSidebar, modelName, chatTokenStats, zeroLeaksMode, onOpenMemory }) => {
     return (
         <header className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-[#050505]/80 backdrop-blur-md z-20">
             <div className="flex items-center gap-4">
@@ -44,7 +45,16 @@ export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, view, onToggleSid
                 </div>
             </div>
             
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
+                {view === 'chat' && (
+                    <button
+                        onClick={onOpenMemory}
+                        className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono text-slate-600 hover:text-slate-400 transition-colors"
+                    >
+                        <Brain size={12} />
+                        <span>memory</span>
+                    </button>
+                )}
                 {chatTokenStats && chatTokenStats.messages > 0 && (
                     <div className="flex items-center gap-2 text-xs font-mono">
                         <Zap size={12} className="text-amber-500" />

@@ -199,7 +199,7 @@ class ExcelAgent(BaseAgent):
             if res["type"] == "table":
                 if self.chat_settings.zero_leaks_mode is True:
                     prev_summary.append(
-                        f"Step {i}: Returned table with {res.get('total_rows', 0)} rows. Data REDACTED (Zero Leaks Mode)."
+                        f"Step {i}: Returned table with {res.get('total_rows', 0)} rows. (Some data hidden for privacy)"
                     )
                 else:
                     prev_summary.append(
@@ -212,7 +212,7 @@ class ExcelAgent(BaseAgent):
             elif res["type"] == "text":
                 if self.chat_settings.zero_leaks_mode is True:
                     prev_summary.append(
-                        f"Step {i}: Text result REDACTED (Zero Leaks Mode)."
+                        f"Step {i}: (Result hidden for privacy)"
                     )
                 else:
                     prev_summary.append(f"Step {i}: {res['data'][:100]}")
@@ -483,7 +483,7 @@ Do NOT mention schema, columns, or technical details.""",
                 if unique_count < 50 and unique_count > 0:
                     if self.chat_settings.zero_leaks_mode is True:
                         stats.append(
-                            f"Distinct values in '{col}': {unique_count} (values REDACTED - Zero Leaks Mode)"
+                            f"Distinct values in '{col}': {unique_count} (some values hidden for privacy)"
                         )
                     else:
                         top_3 = self.df[col].value_counts().head(3)

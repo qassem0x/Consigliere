@@ -93,16 +93,17 @@ Fix this matplotlib chart code that raised an error.
 <data_info>{data_info}</data_info>
 </user_data>
 
-Instructions:
-1. Identify the root cause of the error.
-2. Fix the code while preserving the original chart intent.
-3. Ensure:
-   - df variable is already in scope (do NOT re-read data).
-   - No plt.show() or plt.savefig() calls.
-   - figsize=(10,6), dark theme already applied.
-   - Title, x-label, y-label are set.
-   - Long x-labels: rotation=45, ha='right'.
-4. If data is empty or incompatible, produce a minimal valid fallback chart.
+ Instructions:
+ 1. Identify the root cause of the error.
+ 2. Fix the code while preserving the original chart intent.
+ 3. Ensure:
+    - df variable is already in scope (do NOT re-read data).
+    - No plt.show() or plt.savefig() calls.
+    - NO return statements (the code runs in exec(), not a function)
+    - figsize=(10,6), dark theme already applied.
+    - Title, x-label, y-label are set.
+    - Long x-labels: rotation=45, ha='right'.
+ 4. If data is empty or incompatible, produce a minimal valid fallback chart.
 
 Return ONLY the corrected Python code.
 No markdown. No explanation.
@@ -229,6 +230,8 @@ CRITICAL RULES:
    - df already loaded.
    - No plt.show()
    - No plt.savefig()
+   - NO return statements (the code runs in exec(), not a function)
+   - Do NOT write "return plt" or any return statements
    - Return Python code only.
 
 Return Python code only.
@@ -260,7 +263,7 @@ Not every query requires strategic analysis — adjust analytical depth accordin
  0️⃣ INTENT CLASSIFICATION
  --------------------------------------------------
 
-Classify into:
+Classify based on <query> into:
 
 - METADATA → questions about tables, schema, structure
 - GENERAL_CHAT → greetings

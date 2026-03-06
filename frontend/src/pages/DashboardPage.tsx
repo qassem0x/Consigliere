@@ -12,6 +12,7 @@ import { Header } from '../components/dashboard/Header';
 import { HomeView } from '../components/dashboard/HomeView';
 import { ChatView } from '../components/dashboard/ChatView';
 import { WizardModal } from '../components/dashboard/WizardModal';
+import { MemoryModal } from '../components/dashboard/MemoryModal';
 
 export const DashboardPage: React.FC = () => {
     const { logout } = useAuth();
@@ -37,6 +38,7 @@ export const DashboardPage: React.FC = () => {
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [messageOffset, setMessageOffset] = useState(0);
     const [modelName, setModelName] = useState<string | undefined>(undefined);
+    const [isMemoryModalOpen, setMemoryModalOpen] = useState(false);
 
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -247,7 +249,8 @@ export const DashboardPage: React.FC = () => {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        const userMsg: Message = { role: 'user', content: text };
+        const userMsgId = `temp-user-${Date.now()}`;
+        const userMsg: Message = { id: userMsgId, role: 'user', content: text };
         setMessages(prev => [...prev, userMsg]);
         setIsLoading(true);
 
@@ -259,18 +262,21 @@ export const DashboardPage: React.FC = () => {
             steps: [],
             plan: null,
             related_code: null,
+            parent_id: userMsgId,
             streamingStatus: 'processing'
         };
         setMessages(prev => [...prev, assistantMsg]);
+
+        let realUserMsgId: string | null = null;
 
         try {
             const response = await fetch(`${API_BASE_URL}/messages/${activeChatId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 body: JSON.stringify({ content: text }),
+                credentials: 'include',
                 signal: controller.signal
             });
 
@@ -346,6 +352,7 @@ export const DashboardPage: React.FC = () => {
                             ));
                         }
                         else if (chunk.type === 'final') {
+                            realUserMsgId = chunk.parent_id;
                             setMessages(prev => prev.map(msg =>
                                 msg.id === assistantMsgId
                                     ? {
@@ -377,6 +384,14 @@ export const DashboardPage: React.FC = () => {
                 setMessages(prev => prev.map(msg =>
                     msg.id === assistantMsgId
                         ? { ...msg, content: '**Error:** Response incomplete - server terminated early.', streamingStatus: 'error' as const }
+                        : msg
+                ));
+            }
+
+            if (realUserMsgId) {
+                setMessages(prev => prev.map(msg =>
+                    msg.id === userMsgId
+                        ? { ...msg, id: realUserMsgId }
                         : msg
                 ));
             }
@@ -455,9 +470,9 @@ export const DashboardPage: React.FC = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
-                body: JSON.stringify(dbData)
+                body: JSON.stringify(dbData),
+                credentials: 'include',
             });
 
             if (!response.ok) {
@@ -521,6 +536,7 @@ export const DashboardPage: React.FC = () => {
                         messages: messages.filter(m => m.role === 'assistant' && m.total_tokens).length
                     } : undefined}
                     zeroLeaksMode={view === 'chat' ? userChats.find(c => c.id === activeChatId)?.settings?.zero_leaks_mode ?? false : undefined}
+                    onOpenMemory={() => setMemoryModalOpen(true)}
                 />
 
                 <div className="flex-1 relative overflow-hidden">
@@ -552,6 +568,12 @@ export const DashboardPage: React.FC = () => {
                             onConnectDB={handleConnectDB}
                         />
                     )}
+
+                    <MemoryModal
+                        isOpen={isMemoryModalOpen}
+                        onClose={() => setMemoryModalOpen(false)}
+                        chatId={activeChatId}
+                    />
                 </div>
             </main>
         </div>
