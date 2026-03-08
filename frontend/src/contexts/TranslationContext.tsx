@@ -21,9 +21,7 @@ const translations = {
       ctaSecondary: "Zero-Leak Protocol",
       nodes: {
         excel: "EXCEL / CSV",
-        db: "SQL DATABASES",
-        json: "JSON / REST API",
-        docs: "DOCUMENTS"
+        db: "SQL DATABASES"
       }
     },
     auth: {

@@ -116,7 +116,7 @@ async def analyze_file(
             )
 
         agent = ExcelAgent(file_path=full_path, chat_settings=None)
-        dossier_data = await run_in_threadpool(agent.generate_dossier)
+        dossier_data = await agent.generate_dossier()
         schema = agent.schema
 
     except Exception as e:

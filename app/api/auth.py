@@ -42,7 +42,7 @@ def register(request: Request, user: UserCreate, db: Session = Depends(get_db)):
         full_name=new_user.full_name,
         is_active=new_user.is_active,
     )
-    response = JSONResponse(content=response_data.model_dump())
+    response = JSONResponse(content=response_data.model_dump(mode="json"))
     return security.create_token_response(response, access_token, refresh_token)
 
 

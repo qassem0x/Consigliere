@@ -1,4 +1,5 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
@@ -59,6 +60,15 @@ api.interceptors.response.use(
             }
         }
 
+        if (error.response?.data?.message) {
+            toast.error(error.response.data.message);
+        } else if (error.response?.status === 429) {
+            const retryAfter = error.response.data?.retry_after;
+            toast.error(retryAfter ? `Rate limit exceeded. Please wait ${retryAfter} seconds.` : 'Too many requests. Please wait a moment.');
+        } else if (error.response?.status === 500) {
+            toast.error('Server error. Please try again later.');
+        }
+
         return Promise.reject(error);
     }
 );
@@ -74,7 +84,29 @@ export const fetchStream = async (endpoint: string, body: any) => {
     });
 
     if (!response.ok) {
-        throw new Error(`Stream connection failed: ${response.status} ${response.statusText}`);
+        let errorMessage = `Request failed: ${response.status}`;
+        
+        try {
+            const errorData = await response.json();
+            if (errorData.message) {
+                errorMessage = errorData.message;
+            }
+            if (errorData.code === 'RATE_LIMIT') {
+                errorMessage = errorData.retry_after 
+                    ? `Rate limit exceeded. Please wait ${errorData.retry_after} seconds.`
+                    : 'Too many requests. Please wait a moment.';
+                toast.error(errorMessage, { duration: 5000 });
+            } else if (errorData.code === 'TIMEOUT') {
+                errorMessage = 'Request timed out. Try a simpler query.';
+                toast.error(errorMessage);
+            } else {
+                toast.error(errorMessage);
+            }
+        } catch {
+            toast.error(errorMessage);
+        }
+        
+        throw new Error(errorMessage);
     }
 
     return response;

@@ -18,7 +18,8 @@ litellm.set_verbose = False
 litellm.suppress_debug_info = True
 
 if MODEL_NAME.startswith("ollama"):
-    litellm.api_base = "http://localhost:11434"
+    # litellm.api_base = "http://host.docker.internal:11434"
+    litellm.api_base = "http://127.0.0.1:11434"
 
 if MODEL_NAME.startswith("openrouter"):
     litellm.api_base = "https://openrouter.ai/api/v1/chat/completions"

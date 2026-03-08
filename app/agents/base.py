@@ -135,12 +135,31 @@ class BaseAgent(ABC):
 
         combined_summary = "\n".join(summary_parts)
 
+        if self.chat_settings.zero_leaks_mode is True:
+            zero_leaks_rules = """RULES (Zero Leaks Mode):
+- Do NOT reveal any actual data values, numbers, metrics, or findings
+- Only describe what analytical steps were performed (queries run, charts created, aggregations done)
+- Describe the workflow naturally without explicitly mentioning that data is hidden or restricted
+- Focus on what was analyzed and how, not what was found"""
+            findings_instruction = "- Describe the analytical workflow (what queries were run, what charts were created, what aggregations were performed)"
+        else:
+            zero_leaks_rules = """RULES:
+1. ONLY use numbers and facts from the Data above
+2. Never invent product names, categories, percentages, or trends
+3. Never use placeholders like "Product 1", "Category A"
+4. If data doesn't support something, don't state it
+5. Wrap all numbers, metric values, and proper names/identifiers in backtick code spans — e.g. `42`, `$1,200`, `Product A`, `Q3 2024`"""
+            findings_instruction = "- Share the key numbers and findings (straight from the data, no fluff)"
+
         messages = [
             {
                 "role": "system",
                 "content": ANALYSIS_FORMAT_PROMPT.format(
                     user_query=user_query,
                     combined_summary=combined_summary,
+                    zero_leaks_mode=self.chat_settings.zero_leaks_mode,
+                    zero_leaks_rules=zero_leaks_rules,
+                    findings_instruction=findings_instruction,
                 ),
             }
         ]
@@ -178,6 +197,24 @@ class BaseAgent(ABC):
     def _yield_step_result(self, result: Dict[str, Any]) -> str:
         """Yield step_result JSON for streaming response."""
         return json.dumps({"type": "step_result", "data": result})
+
+    def _yield_error(self, error_type: str, message: str, recoverable: bool = False) -> str:
+        """Yield error JSON for streaming response."""
+        return json.dumps({
+            "type": "error",
+            "error_type": error_type,
+            "message": message,
+            "recoverable": recoverable,
+        })
+
+    def _yield_retry(self, attempt: int, max_attempts: int, message: str) -> str:
+        """Yield retry progress JSON for streaming response."""
+        return json.dumps({
+            "type": "retry",
+            "attempt": attempt,
+            "max_attempts": max_attempts,
+            "message": message,
+        })
 
     def _yield_final_result(
         self,

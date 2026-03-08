@@ -43,12 +43,29 @@ app.include_router(connections.router)
 app.include_router(model.router)
 
 
+from app.core.errors import RecoverableError, ErrorCode
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    
+    if isinstance(exc, RecoverableError):
+        return JSONResponse(
+            status_code=429 if exc.code == ErrorCode.RATE_LIMIT else 500,
+            content={
+                "code": exc.code.value,
+                "message": exc.user_message,
+                "retry_after": exc.retry_after,
+            },
+        )
+    
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error. Please try again later."},
+        content={
+            "code": ErrorCode.INTERNAL_ERROR.value,
+            "message": "An unexpected error occurred. Please try again.",
+        },
     )
 
 

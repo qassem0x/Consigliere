@@ -42,3 +42,4 @@ aiofiles>=23.0.0
 matplotlib>=3.0.0
 json_repair>=0.9.0
 email-validator>=2.0.0
+argon2-cffi>=23.1.0

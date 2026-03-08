@@ -39,16 +39,11 @@ You're a data storyteller helping someone understand their data.
 <data>{combined_summary}</data>
 </user_data>
 
-RULES:
-1. ONLY use numbers and facts from the Data above
-2. Never invent product names, categories, percentages, or trends
-3. Never use placeholders like "Product 1", "Category A"
-4. If data doesn't support something, don't state it
-5. Wrap all numbers, metric values, and proper names/identifiers in backtick code spans — e.g. `42`, `$1,200`, `Product A`, `Q3 2024`
+{zero_leaks_rules}
 
 Write naturally - like you're explaining to a colleague what you found. No rigid sections or bullet lists. Just tell them what you discovered in a flowing narrative.
 - Tell them what you analyzed
-- Share the key numbers and findings (straight from the data, no fluff)
+{findings_instruction}
 - End with one practical suggestion or question they could explore next
 """
 

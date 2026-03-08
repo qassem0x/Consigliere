@@ -4,8 +4,6 @@ import {
     Rose,
     FileSpreadsheet,
     Database,
-    Braces,
-    FileText,
     Zap,
     ArrowRight,
     BarChart3,
@@ -168,18 +166,6 @@ export const LandingPage: React.FC = () => {
                             <Database className="w-4 h-4 text-blue-500" />
                             <span className="text-[10px] font-mono font-bold text-slate-300 group-hover:text-blue-400 tracking-[0.2em] uppercase">
                                 {t.hero.nodes.db}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md hover:border-amber-500/30 hover:bg-amber-500/5 transition-all group">
-                            <Braces className="w-4 h-4 text-amber-500" />
-                            <span className="text-[10px] font-mono font-bold text-slate-300 group-hover:text-amber-400 tracking-[0.2em] uppercase">
-                                {t.hero.nodes.json}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-all group">
-                            <FileText className="w-4 h-4 text-indigo-500" />
-                            <span className="text-[10px] font-mono font-bold text-slate-300 group-hover:text-indigo-400 tracking-[0.2em] uppercase">
-                                {t.hero.nodes.docs}
                             </span>
                         </div>
                     </div>

@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
-from passlib.context import CryptContext
 from jose import jwt
 from app.core.config import SECRET_KEY, get_env
 from fastapi.responses import Response
+import bcrypt
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
@@ -15,15 +15,14 @@ import os
 
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
-
+import bcrypt
 
 def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
 
 
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def create_access_token(data: dict):

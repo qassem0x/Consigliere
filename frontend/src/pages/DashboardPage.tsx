@@ -374,6 +374,17 @@ export const DashboardPage: React.FC = () => {
                                     : msg
                             ));
                         }
+                        else if (chunk.type === 'retry') {
+                            setMessages(prev => prev.map(msg =>
+                                msg.id === assistantMsgId
+                                    ? {
+                                        ...msg,
+                                        content: msg.content + `\n\n${chunk.message}`,
+                                        streamingStatus: 'retrying' as const
+                                    }
+                                    : msg
+                            ));
+                        }
                     } catch (parseError) {
                         console.error('Failed to parse chunk:', line, parseError);
                     }

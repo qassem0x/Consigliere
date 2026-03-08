@@ -343,6 +343,8 @@ class SQLAgent(BaseAgent):
         current_sql_used = ""
 
         for attempt in range(self.max_retries):
+            if attempt > 0:
+                logger.info(f"Retrying with corrected query (attempt {attempt + 1}/{self.max_retries})...")
             if not self.executor._sanitize_sql(sql_query):
                 return {
                     "step_number": step["step_number"],
@@ -462,6 +464,8 @@ class SQLAgent(BaseAgent):
         current_sql_used = ""
 
         for attempt in range(self.max_retries):
+            if attempt > 0:
+                logger.info(f"Retrying chart query (attempt {attempt + 1}/{self.max_retries})")
             if not self.executor._sanitize_sql(sql_query):
                 return {
                     "step_number": step["step_number"],

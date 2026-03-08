@@ -646,6 +646,13 @@ Do NOT mention schema, columns, or technical details.""",
             current_raw_code = raw_code
 
             for code_attempt in range(max_code_retries):
+                if code_attempt > 0:
+                    yield json.dumps({
+                        "type": "retry",
+                        "attempt": code_attempt + 1,
+                        "max_attempts": max_code_retries,
+                        "message": f"Retrying with corrected code (attempt {code_attempt + 1}/{max_code_retries})...",
+                    })
                 try:
                     clean_code = self.executor.sanitize(current_raw_code)
                     all_code.append(clean_code)

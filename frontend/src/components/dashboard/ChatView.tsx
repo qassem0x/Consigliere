@@ -1,4 +1,4 @@
-import React, { useState, memo, useEffect } from 'react';
+import React, { useState, memo, useEffect, useRef } from 'react';
 import { Rose, Send, Command, ChevronDown, ChevronUp, Download, Layers } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { DossierView } from '../DossierView';
@@ -159,6 +159,7 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
     const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
         messages[messages.length - 1]?.id || null
     );
+    const stepsEndRef = useRef<HTMLDivElement>(null);
 
     const userMessageIdsWithResponse = React.useMemo(() => {
         const ids = new Set<string>();
@@ -187,6 +188,16 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
     }, [messages, isLoading, selectedMessageId]);
 
     const selectedMessage = messages.find(m => m.id === selectedMessageId);
+
+    useEffect(() => {
+        if (selectedMessage?.steps && selectedMessage.steps.length > 0 && stepsEndRef.current) {
+            stepsEndRef.current.scrollTo({
+                top: stepsEndRef.current.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+    }, [selectedMessage?.steps?.length]);
+
     console.log("selectedMessage: ")
     console.log(selectedMessage)
     return (
@@ -303,7 +314,7 @@ export const ChatView: React.FC<ChatViewProps> = memo(({
                     )} */}
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+                <div className="flex-1 overflow-y-auto p-6 scrollbar-thin" ref={stepsEndRef}>
                     {selectedMessage ? (
                         selectedMessage.steps && selectedMessage.steps.length > 0 ? (
                             <div className="max-w-3xl mx-auto">
