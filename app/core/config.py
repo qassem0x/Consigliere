@@ -11,12 +11,13 @@ REQUIRED_ENV_VARS = [
 ]
 
 OPTIONAL_ENV_VARS = {
-    "MODEL_NAME": "groq/llama-3.3-70b-versatile",
-    "GOOGLE_API_KEY": None,
+    "MODEL_NAME": "openai/gpt-4o",
+    "OPENAI_API_KEY": None,
+    "ANTHROPIC_API_KEY": None,
     "GEMINI_API_KEY": None,
-    "GROQ_API_KEY": None,
-    "MINMAX_API_KEY": None,
-    "OPENROUTER_API_KEY": None,
+    "DEEPSEEK_API_KEY": None,
+    "MISTRAL_API_KEY": None,
+    "XAI_API_KEY": None,
 }
 
 
@@ -44,12 +45,13 @@ def get_env(key: str, default: Optional[str] = None) -> Optional[str]:
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME", "groq/llama-3.3-70b-versatile")
+MODEL_NAME = os.getenv("MODEL_NAME", "openai/gpt-4o")
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MINMAX_API_KEY = os.getenv("MINMAX_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+XAI_API_KEY = os.getenv("XAI_API_KEY")
 
 validate_env()

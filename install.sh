@@ -109,78 +109,88 @@ fi
 # ── LLM Provider & Model ─────────────────────────────────────────────────────
 section "LLM Provider & Model Selection"
 
-echo -e "  Select your AI provider:\n"
-echo -e "   ${BOLD}1)${NC} Groq          — Fast inference, free tier available"
-echo -e "   ${BOLD}2)${NC} Google Gemini — Google's multimodal models"
-echo -e "   ${BOLD}3)${NC} OpenRouter    — Access 100+ models via one API"
-echo -e "   ${BOLD}4)${NC} Custom        — Enter model name manually\n"
+echo -e "  Select your model (powered by LiteLLM):\n"
+echo -e "  ${BOLD}OpenAI Models:${NC}"
+echo -e "   ${BOLD}1)${NC} gpt-4o           (recommended - balanced)"
+echo -e "   ${BOLD}2)${NC} gpt-4o-mini      (fast, cost-effective)"
+echo -e "\n  ${BOLD}Anthropic Models:${NC}"
+echo -e "   ${BOLD}3)${NC} claude-sonnet-4-5   (strong reasoning)"
+echo -e "   ${BOLD}4)${NC} claude-haiku-4-5    (fast, lightweight)"
+echo -e "\n  ${BOLD}Google Models:${NC}"
+echo -e "   ${BOLD}5)${NC} gemini-2.0-flash-001    (fast, multimodal)"
+echo -e "   ${BOLD}6)${NC} gemini-1.5-pro           (long context)"
+echo -e "\n  ${BOLD}Other Providers:${NC}"
+echo -e "   ${BOLD}7)${NC} meta-llama/llama-3.3-70b-instruct  (open-source)"
+echo -e "   ${BOLD}8)${NC} deepseek/deepseek-chat            (reasoning)"
+echo -e "   ${BOLD}9)${NC} mistral/mistral-large             (general purpose)"
+echo -e "  ${BOLD}10)${NC} xai/grok-3                        (fast reasoning)"
+echo -e "  ${BOLD}11)${NC} Custom model (enter name manually)"
+echo -e "\n  ${CYAN}Full model list: https://models.litellm.ai/${NC}\n"
 
-PROVIDER_CHOICE=""
-while [[ ! "$PROVIDER_CHOICE" =~ ^[1-4]$ ]]; do
-    read -rp "  Choice [1-4]: " PROVIDER_CHOICE
+MODEL_CHOICE=""
+while [[ ! "$MODEL_CHOICE" =~ ^[0-9]+$ ]] || [[ "$MODEL_CHOICE" -lt 1 ]] || [[ "$MODEL_CHOICE" -gt 11 ]]; do
+    read -rp "  Choice [1-11]: " MODEL_CHOICE
+    MODEL_CHOICE="${MODEL_CHOICE:-1}"
 done
 
-GROQ_API_KEY="" GEMINI_API_KEY="" OPENROUTER_API_KEY=""
+OPENAI_API_KEY="" ANTHROPIC_API_KEY="" GEMINI_API_KEY="" DEEPSEEK_API_KEY="" MISTRAL_API_KEY="" XAI_API_KEY=""
 
-case "$PROVIDER_CHOICE" in
-1)
-    echo -e "\n  ${BOLD}Groq Models:${NC}"
-    echo "   1) llama-3.3-70b-versatile  (recommended)"
-    echo "   2) llama-3.1-8b-instant     (faster, lighter)"
-    echo "   3) mixtral-8x7b-32768       (long context)"
-    echo "   4) Enter custom model name"
-    read -rp "  Model choice [1]: " MC; MC="${MC:-1}"
-    case "$MC" in
-        1) MODEL_NAME="groq/llama-3.3-70b-versatile" ;;
-        2) MODEL_NAME="groq/llama-3.1-8b-instant" ;;
-        3) MODEL_NAME="groq/mixtral-8x7b-32768" ;;
-        *) prompt_required MODEL_NAME "Custom model name (e.g. groq/my-model)" ;;
-    esac
-    echo -e "\n  Get your free API key at ${CYAN}https://console.groq.com${NC}"
-    prompt_secret GROQ_API_KEY "Groq API Key"
-    ;;
-2)
-    echo -e "\n  ${BOLD}Google Gemini Models:${NC}"
-    echo "   1) gemini/gemini-2.0-flash   (recommended)"
-    echo "   2) gemini/gemini-1.5-pro"
-    echo "   3) gemini/gemini-1.5-flash"
-    echo "   4) Enter custom model name"
-    read -rp "  Model choice [1]: " MC; MC="${MC:-1}"
-    case "$MC" in
-        1) MODEL_NAME="gemini/gemini-2.0-flash" ;;
-        2) MODEL_NAME="gemini/gemini-1.5-pro" ;;
-        3) MODEL_NAME="gemini/gemini-1.5-flash" ;;
-        *) prompt_required MODEL_NAME "Custom model name (e.g. gemini/my-model)" ;;
-    esac
-    echo -e "\n  Get your API key at ${CYAN}https://aistudio.google.com/app/apikey${NC}"
-    prompt_secret GEMINI_API_KEY "Gemini API Key"
-    ;;
-3)
-    echo -e "\n  ${BOLD}OpenRouter Models:${NC}"
-    echo "   1) openrouter/google/gemini-2.0-flash   (recommended)"
-    echo "   2) openrouter/meta-llama/llama-3.3-70b-instruct"
-    echo "   3) openrouter/deepseek/deepseek-chat"
-    echo "   4) openrouter/anthropic/claude-3.5-sonnet"
-    echo "   5) Enter custom model name"
-    read -rp "  Model choice [1]: " MC; MC="${MC:-1}"
-    case "$MC" in
-        1) MODEL_NAME="openrouter/google/gemini-2.0-flash" ;;
-        2) MODEL_NAME="openrouter/meta-llama/llama-3.3-70b-instruct" ;;
-        3) MODEL_NAME="openrouter/deepseek/deepseek-chat" ;;
-        4) MODEL_NAME="openrouter/anthropic/claude-3.5-sonnet" ;;
-        *) prompt_required MODEL_NAME "Custom OpenRouter model path" ;;
-    esac
-    echo -e "\n  Get your API key at ${CYAN}https://openrouter.ai/keys${NC}"
-    prompt_secret OPENROUTER_API_KEY "OpenRouter API Key"
-    ;;
-4)
-    prompt_required MODEL_NAME "Full model name (e.g. groq/llama-3.3-70b-versatile)"
-    echo -e "\n  Provide API keys for any providers you need."
-    echo -e "  ${YELLOW}Leave blank to skip a provider.${NC}\n"
-    prompt_optional GROQ_API_KEY        "Groq API Key       "
-    prompt_optional GEMINI_API_KEY      "Gemini API Key     "
-    prompt_optional OPENROUTER_API_KEY  "OpenRouter API Key "
-    ;;
+case "$MODEL_CHOICE" in
+    1) MODEL_NAME="openai/gpt-4o" ;;
+    2) MODEL_NAME="openai/gpt-4o-mini" ;;
+    3) MODEL_NAME="anthropic/claude-sonnet-4-5" ;;
+    4) MODEL_NAME="anthropic/claude-haiku-4-5" ;;
+    5) MODEL_NAME="google/gemini-2.0-flash-001" ;;
+    6) MODEL_NAME="google/gemini-1.5-pro" ;;
+    7) MODEL_NAME="meta-llama/llama-3.3-70b-instruct" ;;
+    8) MODEL_NAME="deepseek/deepseek-chat" ;;
+    9) MODEL_NAME="mistral/mistral-large" ;;
+    10) MODEL_NAME="xai/grok-3" ;;
+    11) prompt_required MODEL_NAME "Full model name (e.g. openai/gpt-4o)" ;;
+esac
+
+PROVIDER="${MODEL_NAME%%/*}"
+
+case "$PROVIDER" in
+    openai)
+        echo -e "\n  Get your API key at ${CYAN}https://platform.openai.com/api-keys${NC}"
+        prompt_secret OPENAI_API_KEY "OpenAI API Key"
+        ;;
+    anthropic)
+        echo -e "\n  Get your API key at ${CYAN}https://console.anthropic.com/settings/keys${NC}"
+        prompt_secret ANTHROPIC_API_KEY "Anthropic API Key"
+        ;;
+    google)
+        echo -e "\n  Get your API key at ${CYAN}https://aistudio.google.com/app/apikey${NC}"
+        prompt_secret GEMINI_API_KEY "Gemini API Key"
+        ;;
+    deepseek)
+        echo -e "\n  Get your API key at ${CYAN}https://platform.deepseek.com/${NC}"
+        prompt_secret DEEPSEEK_API_KEY "DeepSeek API Key"
+        ;;
+    mistral)
+        echo -e "\n  Get your API key at ${CYAN}https://console.mistral.ai/${NC}"
+        prompt_secret MISTRAL_API_KEY "Mistral API Key"
+        ;;
+    xai)
+        echo -e "\n  Get your API key at ${CYAN}https://console.x.ai/${NC}"
+        prompt_secret XAI_API_KEY "xAI API Key"
+        ;;
+    meta-llama)
+        echo -e "\n  ${YELLOW}Note: Meta Llama via API requires a provider like Together.ai or Cerebras${NC}"
+        echo -e "  Get your API key at ${CYAN}https://together.ai/${NC}"
+        prompt_secret OPENAI_API_KEY "Together.ai API Key"
+        MODEL_NAME="together_ai/meta-llama/Llama-3.3-70B-Instruct"
+        ;;
+    *)
+        echo -e "\n  ${YELLOW}Please provide the required API keys.${NC}\n"
+        prompt_optional OPENAI_API_KEY      "OpenAI API Key     "
+        prompt_optional ANTHROPIC_API_KEY   "Anthropic API Key  "
+        prompt_optional GEMINI_API_KEY      "Gemini API Key     "
+        prompt_optional DEEPSEEK_API_KEY    "DeepSeek API Key   "
+        prompt_optional MISTRAL_API_KEY     "Mistral API Key    "
+        prompt_optional XAI_API_KEY         "xAI API Key        "
+        ;;
 esac
 
 success "Model configured: ${BOLD}${MODEL_NAME}${NC}"
@@ -234,9 +244,12 @@ ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
 # ── LLM ──────────────────────────────────────────────────────────────────────
 MODEL_NAME=${MODEL_NAME}
-GROQ_API_KEY=${GROQ_API_KEY}
+OPENAI_API_KEY=${OPENAI_API_KEY}
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 GEMINI_API_KEY=${GEMINI_API_KEY}
-OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+MISTRAL_API_KEY=${MISTRAL_API_KEY}
+XAI_API_KEY=${XAI_API_KEY}
 
 # ── Database ──────────────────────────────────────────────────────────────────
 DATABASE_URL=${DATABASE_URL}
