@@ -2,8 +2,20 @@
 
 ![Consigliere](image.png)
 
+<p>
 Private AI data analyst for structured data.  
 Upload files or connect a database, then ask questions in natural language and receive streamed, step-by-step analysis.
+</p>
+
+
+<a align="center">
+
+![Python](https://img.shields.io/badge/Python-3.10+-111?logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-111?logo=fastapi)
+![Docker](https://img.shields.io/badge/Docker-111?logo=docker)
+![License](https://img.shields.io/badge/License-MIT-111)
+
+</a>
 
 ## What It Does
 
