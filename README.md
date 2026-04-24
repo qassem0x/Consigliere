@@ -8,14 +8,12 @@ Upload files or connect a database, then ask questions in natural language and r
 </p>
 
 
-<a align="center">
-
-![Python](https://img.shields.io/badge/Python-3.10+-111?logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-111?logo=fastapi)
-![Docker](https://img.shields.io/badge/Docker-111?logo=docker)
-![License](https://img.shields.io/badge/License-MIT-111)
-
-</a>
+<div align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-111?logo=python" />
+  <img src="https://img.shields.io/badge/FastAPI-111?logo=fastapi" />
+  <img src="https://img.shields.io/badge/Docker-111?logo=docker" />
+  <img src="https://img.shields.io/badge/License-MIT-111" />
+</div>
 
 ## What It Does
 
