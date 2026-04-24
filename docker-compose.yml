@@ -24,50 +24,51 @@ services:
   # ─────────────────────────────────────────────
   # FastAPI Backend
   # ─────────────────────────────────────────────
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: consigliere_api
-    ports:
-      - "8000:8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./data:/code/data
-      - ./static:/code/static
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@db:5432/consigliere}
-      SECRET_KEY: ${SECRET_KEY}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:3000}
-      MODEL_NAME: ${MODEL_NAME:-openai/gpt-4o}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      XAI_API_KEY: ${XAI_API_KEY:-}
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
+  # backend:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: consigliere_api
+  #   ports:
+  #     - "8000:8000"
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   volumes:
+  #     - ./data:/code/data
+  #     - ./static:/code/static
+  #   environment:
+  #     DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@db:5432/consigliere}
+  #     SECRET_KEY: ${SECRET_KEY}
+  #     ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+  #     CORS_ORIGINS: "*"
+  #     MODEL_NAME: ${MODEL_NAME:-openai/gpt-4o}
+  #     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  #     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  #     GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  #     DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  #     MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+  #     XAI_API_KEY: ${XAI_API_KEY:-}
+  #     GROQ_API_KEY: ${GROQ_API_KEY:-}
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   restart: unless-stopped
 
   # ─────────────────────────────────────────────
   # React Frontend (Vite dev server)
-  # ─────────────────────────────────────────────
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    container_name: consigliere_frontend
-    ports:
-      - "3000:3000"
-    environment:
-      VITE_API_URL: "http://localhost:8000"
-    depends_on:
-      - backend
-    restart: unless-stopped
+  # # ─────────────────────────────────────────────
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile.dev
+  #   container_name: consigliere_frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     VITE_API_URL: "http://localhost:8000"
+  #   depends_on:
+  #     - backend
+  #   restart: unless-stopped
 
   # ─────────────────────────────────────────────
   # pgAdmin 

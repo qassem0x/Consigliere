@@ -11,9 +11,11 @@ from app.core.config import ENCRYPTION_KEY, validate_env
 from app.core.utils import sanitize_nan
 from app.models.db_models import User, Chat, Message, ChatSettings
 from app.models.messages import MessageCreate, MessageOut
-from app.agents import ExcelAgent, SQLAgent
-from app.agents.base import CancelledException
-from app.agents.memory.chat_memory import ChatMemory
+from app.agent.implementations.db import SQLAgent
+from app.agent.implementations.file import ExcelAgent
+from app.agent.factory import AgentFactory
+from app.agent.exceptions import CancelledException
+from app.agent.memory.chat_memory import ChatMemory
 from cryptography.fernet import Fernet
 import json
 from datetime import datetime
@@ -98,7 +100,7 @@ async def send_message(
     # Create cancellation event for this request
     cancel_event = asyncio.Event()
 
-    code_type = "python"
+    code_type = "duckdb"
 
     if chat.file_id:
         path = "data/" + chat.file.file_path
@@ -109,19 +111,29 @@ async def send_message(
         chat_settings = (
             db.query(ChatSettings).where(ChatSettings.chat_id == chat_id).first()
         )
-        agent = ExcelAgent(
-            path,
-            chat_settings=chat_settings,
-            cancel_event=cancel_event,
-            chat_memory=memory,
-        )
+        try:
+            agent = ExcelAgent(
+                source=path,
+                chat_settings=chat_settings,
+                cancel_event=cancel_event,
+                chat_memory=memory,
+            )
+            print(f"DEBUG: Successfully initialized ExcelAgent for file: {path}")
+        except Exception as agent_err:
+            print(
+                f"DEBUG: Failed to initialize ExcelAgent for file: {type(agent_err).__name__}: {str(agent_err)}"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to load file: {str(agent_err)}",
+            )
+        
     elif chat.connection_id:
         code_type = "sql"
         if not chat.connection.connection_string:
             raise HTTPException(status_code=404, detail="Connection details not found.")
         try:
             encrypted_conn_str = chat.connection.connection_string
-            # Handle both string and bytes
             if isinstance(encrypted_conn_str, str):
                 encrypted_conn_str = encrypted_conn_str.encode()
             decrypted_conn_str = fernet.decrypt(encrypted_conn_str).decode()
@@ -146,10 +158,10 @@ async def send_message(
                 cancel_event=cancel_event,
                 chat_memory=memory,
             )
-            print(f"DEBUG: Successfully initialized SQLAgent for chat {chat_id}")
+            print(f"DEBUG: Successfully initialized SQLAgent for database")
         except Exception as agent_err:
             print(
-                f"DEBUG: Failed to initialize SQLAgent for chat {chat_id}: {type(agent_err).__name__}: {str(agent_err)}"
+                f"DEBUG: Failed to initialize SQLAgent for database: {type(agent_err).__name__}: {str(agent_err)}"
             )
             raise HTTPException(
                 status_code=400,

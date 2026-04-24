@@ -14,10 +14,12 @@ RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 # Copy application code
 COPY ./app ./app
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
 
 # Ensure required runtime directories exist
 RUN mkdir -p /code/data /code/static/plots
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2

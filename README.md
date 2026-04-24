@@ -1,116 +1,123 @@
-# 🌹 Consigliere
+# Consigliere 🌹 
 
 ![Consigliere](image.png)
 
-Your private AI data analyst. Upload files or connect databases, then query your data using natural language.
+Private AI data analyst for structured data.  
+Upload files or connect a database, then ask questions in natural language and receive streamed, step-by-step analysis.
 
-## Quick Start
+## What It Does
 
-### 1. Clone & Setup
+- Conversational analytics over files and SQL databases
+- Structured planning + execution pipeline (plan, query, chart, summary)
+- Zero-leaks mode for privacy-sensitive outputs
+- Message history, chat memory, and token accounting
+- Read-focused execution and query safety checks
+
+## Feature Highlights
+
+- **Dual data sources:** Analyze uploaded files (CSV/XLSX -> parquet) and live SQL databases in one interface.
+- **Agentic analysis workflow:** Each question is broken into steps (metrics, tables, charts, summary) before execution.
+- **Streaming responses:** Results are returned progressively so users see progress in real time, not only at completion.
+- **Chart generation:** The system can turn query outputs into visualizations and serve them from `static/plots`.
+- **Chat-level controls:** Per-chat settings support `zero_leaks_mode`, row limits, and optional custom analysis prompt.
+- **Persistent context:** Chats retain message history and rolling summary so follow-up questions stay contextual.
+- **Token usage tracking:** Prompt/completion/total token counts are stored per assistant response.
+- **Safety guardrails:** Query sanitization and read-only intent reduce risky SQL operations.
+
+## Tech Stack
+
+- **Backend:** FastAPI, SQLAlchemy, Alembic
+- **Data execution:** DuckDB (files), SQLAlchemy engines (databases)
+- **LLM routing:** LiteLLM
+- **Frontend:** React (in `frontend/`)
+- **Infra:** Docker + docker-compose
+
+## Quick Start (Docker)
+
+1) Clone the repo:
 
 ```bash
 git clone https://github.com/qassem0x/Consigliere.git
 cd Consigliere
 ```
 
-### 2. Environment Variables
-
-Create a `.env` file:
+2) Create `.env`:
 
 ```env
-# Required
 DATABASE_URL=postgresql://user:password@localhost:5432/consigliere
-SECRET_KEY=your-secret-key-min-32-chars-long-here
-ENCRYPTION_KEY=your-encryption-key-exactly-32-chars
-
-# LLM Configuration (LiteLLM supports 100+ models)
-# See full model list: https://docs.litellm.ai/docs/providers
+SECRET_KEY=replace-with-a-long-random-secret
+ENCRYPTION_KEY=replace-with-a-valid-fernet-key
 MODEL_NAME=openai/gpt-4o
-
-# Provider API Keys (at least one required based on your model)
-OPENAI_API_KEY=your-openai-key
-# or
-ANTHROPIC_API_KEY=your-anthropic-key
-# or
-GEMINI_API_KEY=your-gemini-key
-# or
-DEEPSEEK_API_KEY=your-deepseek-key
-# or
-MISTRAL_API_KEY=your-mistral-key
-# or
-XAI_API_KEY=your-xai-key
+OPENAI_API_KEY=your-key
 ```
 
-### 3. Run with Docker
+3) Run:
 
 ```bash
 docker-compose up -d
 ```
 
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- pgAdmin: http://localhost:5050 (admin@admin.com / admin)
+4) Open:
 
-### 4. Or Run Locally
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8000`
+- API docs: `http://localhost:8000/docs`
 
-**Backend:**
+## Local Development
+
+### Backend
+
 ```bash
 pip install -r requirements.txt
-python -m app.database.schema   # Run schema.sql in your DB
 uvicorn app.main:app --reload
 ```
 
-**Frontend:**
+### Frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## Usage
+## Model Configuration
 
-1. Register a new account
-2. Upload an Excel/CSV/Parquet file or connect a database
-3. Ask questions in natural language
+Consigliere uses LiteLLM.  
+Set `MODEL_NAME` and the matching provider API key in `.env`.
 
-## Features
+For provider-specific setup and model naming, use LiteLLM docs directly:
 
-- **Zero-Leaks Mode**: Prevents sensitive data from appearing in AI responses
-- **Streaming Responses**: See results in real-time
-- **Conversation History**: Maintains context across queries
-- **SQL Database Support**: Connect directly to PostgreSQL and MySQL (Read-Only Connection)
+- [LiteLLM providers](https://docs.litellm.ai/docs/providers)
+- [LiteLLM model catalog](https://models.litellm.ai/)
 
-## Environment Variables Reference
+## Core API Routes
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `SECRET_KEY` | Yes | JWT signing key (32+ chars) |
-| `ENCRYPTION_KEY` | Yes | Data encryption key (32 chars) |
-| `MODEL_NAME` | No | LLM model (default: openai/gpt-4o) |
-| `OPENAI_API_KEY` | No | OpenAI API key |
-| `ANTHROPIC_API_KEY` | No | Anthropic API key |
-| `GEMINI_API_KEY` | No | Google Gemini API key |
-| `DEEPSEEK_API_KEY` | No | DeepSeek API key |
-| `MISTRAL_API_KEY` | No | Mistral API key |
-| `XAI_API_KEY` | No | xAI (Grok) API key |
-| `CORS_ORIGINS` | No | Allowed origins (comma-separated) |
+- `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
+- `POST /files/upload`, `POST /files/{file_id}/analyze`
+- `POST /connections`
+- `GET /chats`, `POST /chats`, `PATCH /chats/{chat_id}/settings`
+- `GET /messages/{chat_id}`, `POST /messages/{chat_id}` (streaming response)
+- `GET /model`
 
-## Supported Models
+## Backend Layout (`app/`)
 
-Consigliere uses LiteLLM to support 100+ models. Here are the 10 most popular ones:
+- `app/main.py` - FastAPI app, middleware, router wiring
+- `app/api/` - HTTP endpoints
+- `app/core/` - config, auth, DB session, LLM wrappers, shared utilities
+- `app/models/` - SQLAlchemy + request/response models
+- `app/agent/` - planning, SQL generation, execution, rendering, memory
+- `app/services/` - ingestion pipeline (file -> parquet)
 
-| # | Model | LiteLLM Name |
-|---|-------|--------------|
-| 1 | OpenAI GPT-4o | `openai/gpt-4o` |
-| 2 | OpenAI GPT-4o-mini | `openai/gpt-4o-mini` |
-| 3 | Anthropic Claude Sonnet 4.5 | `anthropic/claude-sonnet-4-5` |
-| 4 | Anthropic Claude Haiku 4 | `anthropic/claude-haiku-4-5` |
-| 5 | Google Gemini 2.0 Flash | `google/gemini-2.0-flash-001` |
-| 6 | Google Gemini 1.5 Pro | `google/gemini-1.5-pro` |
-| 7 | Meta Llama 3.3 70B | `meta-llama/llama-3.3-70b-instruct` |
-| 8 | DeepSeek V3 | `deepseek/deepseek-chat` |
-| 9 | Mistral Large | `mistral/mistral-large` |
-| 10 | xAI Grok 3 | `xai/grok-3` |
+## Typical User Flow
 
-For the complete list of 100+ models, visit: https://models.litellm.ai/
+1. User signs in.
+2. User uploads a file or creates a DB connection.
+3. System builds an initial dossier.
+4. User sends a message to a chat.
+5. Agent plans steps, executes queries, renders charts (if needed), and streams final answer.
+
+## Notes
+
+- Uploaded data is processed into parquet in `data/`.
+- Generated plots are served from `static/plots`.
+

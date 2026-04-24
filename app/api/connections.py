@@ -9,7 +9,7 @@ from app.models.db_models import Connection
 from app.core.database import get_db
 from app.core.config import ENCRYPTION_KEY, validate_env
 from cryptography.fernet import Fernet
-from app.agents import SQLAgent
+from app.agent import SQLAgent
 
 validate_env()
 
@@ -23,7 +23,7 @@ fernet = Fernet(
 
 
 @router.post("/connections", response_model=ConnectionOut, status_code=201)
-def create_connection(
+async def create_connection(
     connection: ConnectionCreate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -60,7 +60,7 @@ def create_connection(
         )
 
         agent = SQLAgent(
-            url.render_as_string(hide_password=False), chat_settings=temp_settings
+            connection_string=url.render_as_string(hide_password=False), chat_settings=temp_settings
         )
         print(
             f"DEBUG: Successfully initialized SQLAgent for connection: {connection.name}"
@@ -79,7 +79,7 @@ def create_connection(
 
     dossier = {}
     try:
-        dossier = agent.generate_dossier()
+        dossier = await agent.generate_dossier()
         print(
             f"DEBUG: Successfully generated dossier for connection: {connection.name}"
         )

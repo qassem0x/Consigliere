@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.db_models import User, File as DBFile, Dossier, Chat, ChatSettings
 from app.models.chats import ChatSettingsUpdate
-from app.agents import ExcelAgent
+from app.agent.implementations.file import ExcelAgent
 from app.services.ingestion import _transform_to_parquet
 
 router = APIRouter()
@@ -115,7 +115,7 @@ async def analyze_file(
                 status_code=404, detail="Physical file missing on server."
             )
 
-        agent = ExcelAgent(file_path=full_path, chat_settings=None)
+        agent = ExcelAgent(source=full_path, chat_settings=None)
         dossier_data = await agent.generate_dossier()
         schema = agent.schema
 

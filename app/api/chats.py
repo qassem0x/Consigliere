@@ -121,7 +121,7 @@ def get_chat_memory(
     current_user: User = Depends(get_current_user),
 ):
     from app.models.db_models import Message
-    from app.agents.memory.chat_memory import DEFAULT_MAX_MESSAGES
+    from app.agent.memory.chat_memory import DEFAULT_MAX_MESSAGES
     import json
     
     chat = (
@@ -186,7 +186,7 @@ def delete_chat(
     if target_file:
         file_path = "data/" + chat.file.file_path
         if file_path:
-            from app.agents.cache import InMemoryCache
+            from app.agent.cache import InMemoryCache
 
             cache = InMemoryCache()
             cache.invalidate(file_path)
@@ -210,7 +210,7 @@ def delete_chat(
 
                 decrypted_conn_str = fernet.decrypt(encrypted_conn_str).decode()
 
-                from app.agents.cache import SQLCacheManager
+                from app.agent.cache import SQLCacheManager
 
                 cache = SQLCacheManager()
                 cache.invalidate_connection(connection_string=decrypted_conn_str)
